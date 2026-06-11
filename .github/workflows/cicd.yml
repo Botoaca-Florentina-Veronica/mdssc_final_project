@@ -13,15 +13,28 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# ── Default scan settings (mirrors Jenkinsfile parameters) ────────────────────
+env:
+  MDSSC_API_KEY_HEADER:          apikey
+  VULNERABILITY_THRESHOLD:       critical
+  FAIL_ON_SECRET:                "true"
+  FAIL_ON_MALWARE:               "true"
+  MDSSC_SCAN_TIMEOUT:            "900"
+  MDSSC_POLL_INTERVAL:           "10"
+  MDSSC_MAX_UPLOAD_MB:           "100"
+  MDSSC_SKIP_LARGE_ARTIFACTS:    "true"
+
 jobs:
-  # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
   # Stage 1 — Source Code Scan
-  # ─────────────────────────────────────────────────────────────
+  # Health check → auto-detect workflow → indirect branch scan
+  # Mirrors: Check Health + Fetch Workflow + MDSSC-Source Code Scan stages
+  # ─────────────────────────────────────────────────────────────────────────────
   source-scan:
     name: "1 · Source Code Scan"
     runs-on: ubuntu-latest
     outputs:
-      passed: ${{ steps.scan.outputs.passed }}
+      passed:  ${{ steps.scan.outputs.passed }}
       scan-id: ${{ steps.scan.outputs.scan-id }}
     steps:
       - uses: actions/checkout@v4
@@ -29,14 +42,12 @@ jobs:
       - name: MDSSC Source Code Scan
         id: scan
         env:
-          MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY: ${{ secrets.MDSSC_API_KEY }}
-          VULNERABILITY_THRESHOLD: critical
-          FAIL_ON_SECRET: "true"
-          FAIL_ON_MALWARE: "true"
+          MDSSC_INSTANCE:    ${{ secrets.MDSSC_INSTANCE }}
+          MDSSC_API_KEY:     ${{ secrets.MDSSC_API_KEY }}
+          MDSSC_WORKFLOW_ID: ${{ secrets.MDSSC_WORKFLOW_ID }}
         run: bash ci/scripts/mdssc-source-scan.sh
 
-      - name: Upload scan results
+      - name: Upload source scan results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -44,12 +55,57 @@ jobs:
           path: scan-results/source-scan.json
           if-no-files-found: ignore
 
-  # ─────────────────────────────────────────────────────────────
-  # Stage 2 — Build Plugin (.hpi)
-  # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Stage 2 — Security Scan
+  # npm audit on e2e/ (Node.js). Mirrors the Security Scan stage in Jenkinsfile.
+  # Runs in parallel with source-scan (no dependency between them).
+  # ─────────────────────────────────────────────────────────────────────────────
+  security-scan:
+    name: "2 · Security Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: npm audit — E2E dependencies
+        working-directory: e2e
+        run: |
+          npm install
+          echo ""
+          echo "=========================================="
+          echo "   E2E npm audit REPORT"
+          echo "=========================================="
+          npm audit --json > ../e2e-audit.json 2>/dev/null || true
+          node -e "
+            const d = JSON.parse(require('fs').readFileSync('../e2e-audit.json','utf8'));
+            const v = d.metadata && d.metadata.vulnerabilities ? d.metadata.vulnerabilities : {};
+            console.log('  Critical : ' + (v.critical||0));
+            console.log('  High     : ' + (v.high||0));
+            console.log('  Moderate : ' + (v.moderate||0));
+            console.log('  Low      : ' + (v.low||0));
+            console.log('==========================================');
+          "
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit
+          path: e2e-audit.json
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Stage 3 — Build Plugin (.hpi)
+  # Waits for both source-scan and security-scan to finish.
+  # Uses real plugin if plugin-src/pom.xml exists, otherwise generates stub.
+  # ─────────────────────────────────────────────────────────────────────────────
   build:
-    name: "2 · Build Plugin (.hpi)"
-    needs: source-scan
+    name: "3 · Build Plugin (.hpi)"
+    needs: [source-scan, security-scan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +127,7 @@ jobs:
           else
             echo "::notice::Track A plugin not yet available — generating placeholder .hpi"
             mkdir -p _stub/META-INF
-            printf 'Manifest-Version: 1.0\nPlugin-Class: io.mdssc.MdsscPlugin\nPlugin-Version: 0.0.1-SNAPSHOT\nPlugin-Id: mdssc-scanner\nPlugin-Dependencies: \n' \
+            printf 'Manifest-Version: 1.0\nPlugin-Class: io.mdssc.MdsscPlugin\nPlugin-Version: 0.0.1-SNAPSHOT\nPlugin-Id: mdssc-scanner\n' \
               > _stub/META-INF/MANIFEST.MF
             cd _stub && zip -r ../plugin/mdssc-plugin.hpi . -q
             echo "Placeholder .hpi created ($(du -sh ../plugin/mdssc-plugin.hpi | cut -f1))"
@@ -83,15 +139,17 @@ jobs:
           name: mdssc-plugin-hpi
           path: plugin/mdssc-plugin.hpi
 
-  # ─────────────────────────────────────────────────────────────
-  # Stage 3 — Artifact Scan
-  # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Stage 4 — Artifact Scan
+  # Scans all artifacts in plugin/ — size limit MDSSC_MAX_UPLOAD_MB.
+  # Mirrors Jenkinsfile's Artifact Scan + printFinalSummary.
+  # ─────────────────────────────────────────────────────────────────────────────
   artifact-scan:
-    name: "3 · Artifact Scan (.hpi)"
+    name: "4 · Artifact Scan (.hpi)"
     needs: build
     runs-on: ubuntu-latest
     outputs:
-      passed: ${{ steps.scan.outputs.passed }}
+      passed:  ${{ steps.scan.outputs.passed }}
       scan-id: ${{ steps.scan.outputs.scan-id }}
     steps:
       - uses: actions/checkout@v4
@@ -106,11 +164,8 @@ jobs:
         id: scan
         env:
           MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY: ${{ secrets.MDSSC_API_KEY }}
-          ARTIFACT_PATH: plugin/mdssc-plugin.hpi
-          VULNERABILITY_THRESHOLD: critical
-          FAIL_ON_SECRET: "true"
-          FAIL_ON_MALWARE: "true"
+          MDSSC_API_KEY:  ${{ secrets.MDSSC_API_KEY }}
+          ARTIFACT_DIR:   plugin
         run: bash ci/scripts/mdssc-artifact-scan.sh
 
       - name: Upload artifact scan results
@@ -118,14 +173,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: artifact-scan-results
-          path: scan-results/artifact-scan.json
+          path: scan-results/
           if-no-files-found: ignore
 
-  # ─────────────────────────────────────────────────────────────
-  # Stage 4 — E2E Tests
-  # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Stage 5 — E2E Tests
+  # Playwright API tests against mock MDSSC server.
+  # ─────────────────────────────────────────────────────────────────────────────
   e2e-tests:
-    name: "4 · E2E Tests"
+    name: "5 · E2E Tests"
     needs: [build, artifact-scan]
     runs-on: ubuntu-latest
     steps:
@@ -153,13 +209,13 @@ jobs:
       - name: Run E2E tests
         env:
           MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY: ${{ secrets.MDSSC_API_KEY }}
-          HPI_PATH: ${{ github.workspace }}/plugin/mdssc-plugin.hpi
-          CI: "true"
+          MDSSC_API_KEY:  ${{ secrets.MDSSC_API_KEY }}
+          HPI_PATH:       ${{ github.workspace }}/plugin/mdssc-plugin.hpi
+          CI:             "true"
         run: npx playwright test
         working-directory: e2e
 
-      - name: Upload Playwright HTML report
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -175,12 +231,13 @@ jobs:
           path: e2e/test-results/
           if-no-files-found: ignore
 
-  # ─────────────────────────────────────────────────────────────
-  # Stage 5 — Report + GitHub Pages
-  # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Stage 6 — Report + GitHub Pages
+  # Always runs. Deploys docs/ to Pages on main push.
+  # ─────────────────────────────────────────────────────────────────────────────
   report:
-    name: "5 · Report"
-    needs: [source-scan, build, artifact-scan, e2e-tests]
+    name: "6 · Report"
+    needs: [source-scan, security-scan, build, artifact-scan, e2e-tests]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -198,19 +255,19 @@ jobs:
 
       - name: Generate pipeline report
         env:
-          SOURCE_SCAN_STATUS: ${{ needs.source-scan.result }}
-          BUILD_STATUS: ${{ needs.build.result }}
-          ARTIFACT_SCAN_STATUS: ${{ needs.artifact-scan.result }}
-          E2E_STATUS: ${{ needs.e2e-tests.result }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SOURCE_SCAN_STATUS:    ${{ needs.source-scan.result }}
+          SECURITY_SCAN_STATUS:  ${{ needs.security-scan.result }}
+          BUILD_STATUS:          ${{ needs.build.result }}
+          ARTIFACT_SCAN_STATUS:  ${{ needs.artifact-scan.result }}
+          E2E_STATUS:            ${{ needs.e2e-tests.result }}
+          RUN_URL:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_SHA: ${{ github.sha }}
-          BRANCH: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
+          BRANCH:     ${{ github.ref_name }}
+          REPO:       ${{ github.repository }}
         run: node ci/scripts/generate-report.js
 
       - name: Copy report into docs site
-        run: |
-          cp test-results/pipeline-report.json docs/pipeline-report.json
+        run: cp test-results/pipeline-report.json docs/pipeline-report.json
 
       - name: Upload Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -218,15 +275,15 @@ jobs:
         with:
           path: docs/
 
-      - name: Upload pipeline report artifact
+      - name: Upload pipeline report
         uses: actions/upload-artifact@v4
         with:
           name: pipeline-report
           path: test-results/pipeline-report.json
 
-  # ─────────────────────────────────────────────────────────────
-  # Deploy GitHub Pages (main branch only)
-  # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Deploy GitHub Pages (main branch push only)
+  # ─────────────────────────────────────────────────────────────────────────────
   deploy-pages:
     name: "Deploy GitHub Pages"
     needs: report
