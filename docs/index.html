@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MDSSC CI/CD Pipeline — Report</title>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --green:   #3fb950;
+      --red:     #f85149;
+      --yellow:  #d29922;
+      --blue:    #58a6ff;
+      --purple:  #bc8cff;
+      --orange:  #ffa657;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 20px; font-weight: 600; }
+    header .badge-row { margin-top: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    header .badge-row a img { vertical-align: middle; }
+    main  { max-width: 1100px; margin: 32px auto; padding: 0 24px; }
+
+    /* ── Cards ───────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .card h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--blue);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── Pipeline diagram ────────────────────────────────────────────────── */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0;
+      justify-content: center;
+      padding: 8px 0;
+    }
+    .stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .stage-box {
+      background: #1c2128;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      text-align: center;
+      min-width: 120px;
+      cursor: default;
+      transition: border-color .15s;
+    }
+    .stage-box:hover { border-color: var(--blue); }
+    .stage-box .icon { font-size: 22px; display: block; margin-bottom: 4px; }
+    .stage-box .name { font-size: 12px; font-weight: 600; color: var(--text); }
+    .stage-box .sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .stage-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+
+    .arrow {
+      font-size: 20px;
+      color: var(--border);
+      padding: 0 6px;
+      align-self: center;
+      margin-bottom: 24px;
+    }
+
+    /* Stage status colours */
+    .status-success  { background: rgba(63,185,80,.15); color: var(--green);  border: 1px solid rgba(63,185,80,.3); }
+    .status-failure  { background: rgba(248,81,73,.15); color: var(--red);    border: 1px solid rgba(248,81,73,.3); }
+    .status-skipped  { background: rgba(139,148,158,.1); color: var(--muted); border: 1px solid rgba(139,148,158,.2); }
+    .status-pending  { background: rgba(210,153,34,.12); color: var(--yellow);border: 1px solid rgba(210,153,34,.3); }
+
+    .stage-box.success  { border-color: var(--green); }
+    .stage-box.failure  { border-color: var(--red); }
+    .stage-box.skipped  { opacity: .6; }
+
+    /* ── Detail sub-lists inside the pipeline diagram ─────────────────────── */
+    .stage-details {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    /* ── Stage table ─────────────────────────────────────────────────────── */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+
+    /* ── Scan summary ────────────────────────────────────────────────────── */
+    .severity-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+    .sev-chip {
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid;
+    }
+    .sev-critical { background: rgba(248,81,73,.15);  color: #f85149; border-color: rgba(248,81,73,.3); }
+    .sev-high     { background: rgba(255,166,87,.12); color: #ffa657; border-color: rgba(255,166,87,.3); }
+    .sev-medium   { background: rgba(210,153,34,.12); color: #d29922; border-color: rgba(210,153,34,.3); }
+    .sev-low      { background: rgba(88,166,255,.1);  color: #58a6ff; border-color: rgba(88,166,255,.3); }
+    .sev-unknown  { background: rgba(139,148,158,.1); color: #8b949e; border-color: rgba(139,148,158,.2); }
+    .sev-ok       { background: rgba(63,185,80,.12);  color: #3fb950; border-color: rgba(63,185,80,.3); }
+
+    /* ── Test results ────────────────────────────────────────────────────── */
+    .test-group   { margin-bottom: 16px; }
+    .test-group h4{ font-size: 13px; color: var(--blue); margin-bottom: 8px; }
+    .test-item    { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+    .test-dot     { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-pass { background: var(--green); }
+    .dot-fail { background: var(--red); }
+    .dot-skip { background: var(--muted); }
+
+    /* ── Meta info ───────────────────────────────────────────────────────── */
+    .meta-row { display: flex; gap: 24px; flex-wrap: wrap; }
+    .meta-item { display: flex; flex-direction: column; }
+    .meta-item .label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+    .meta-item .value { font-size: 13px; font-family: ui-monospace, monospace; }
+
+    /* ── Overall status banner ───────────────────────────────────────────── */
+    .status-banner {
+      border-radius: 8px;
+      padding: 14px 20px;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .banner-success { background: rgba(63,185,80,.12); border: 1px solid rgba(63,185,80,.3); color: var(--green); }
+    .banner-failure { background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); color: var(--red); }
+    .banner-pending { background: rgba(210,153,34,.1); border: 1px solid rgba(210,153,34,.3); color: var(--yellow); }
+
+    footer {
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 20px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 40px;
+    }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { font-family: ui-monospace, monospace; background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <!-- OPSWAT-style shield icon -->
+  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="40" height="40" rx="8" fill="#1c2128"/>
+    <path d="M20 6 L32 11 L32 22 C32 28 26 33 20 35 C14 33 8 28 8 22 L8 11 Z" fill="#1f6feb" opacity=".3"/>
+    <path d="M20 9 L30 13.5 L30 22 C30 27 25 31 20 33 C15 31 10 27 10 22 L10 13.5 Z" stroke="#58a6ff" stroke-width="1.5" fill="none"/>
+    <path d="M15 20 L18.5 23.5 L25.5 17" stroke="#3fb950" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <div>
+    <h1>MDSSC Jenkins Plugin — CI/CD Pipeline</h1>
+    <div class="badge-row">
+      <a href="https://github.com/ioanamhl/mdssc_project/actions/workflows/cicd.yml" target="_blank">
+        <img src="https://github.com/ioanamhl/mdssc_project/actions/workflows/cicd.yml/badge.svg" alt="CI/CD" />
+      </a>
+      <span style="color:var(--muted);font-size:12px">Track B + C · GitHub Actions</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Overall status ──────────────────────────────────────────────────── -->
+  <div id="overall-banner" class="status-banner banner-pending">
+    <span id="banner-icon">⏳</span>
+    <span id="banner-text">Fetching latest pipeline status…</span>
+  </div>
+
+  <!-- ── Pipeline Diagram ────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c.412 0 .787.18 1.04.463l.694.831A2.25 2.25 0 0 0 8.459 3H14.5a.5.5 0 0 1 .5.5V5.5a.5.5 0 0 1-.5.5H14v7.25a.75.75 0 0 1-.75.75H2.75A.75.75 0 0 1 2 13.25V6H1.5a.5.5 0 0 1-.5-.5V2.25A.5.5 0 0 1 0 1.75Z"/></svg>
+      Pipeline Flow
+    </h2>
+
+    <div class="pipeline">
+
+      <div class="stage">
+        <div class="stage-box" id="box-source-scan">
+          <span class="icon">🔍</span>
+          <span class="name">Code Scan</span>
+          <span class="sub">MDSSC source</span>
+        </div>
+        <div class="stage-details">
+          MDSSC /api/v1/scans<br>
+          Threshold gate<br>
+          Fail on secret/malware
+        </div>
+        <span id="status-source-scan" class="stage-status status-skipped">pending</span>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="stage">
+        <div class="stage-box" id="box-build">
+          <span class="icon">📦</span>
+          <span class="name">Build .hpi</span>
+          <span class="sub">mvn package</span>
+        </div>
+        <div class="stage-details">
+          Maven / stub fallback<br>
+          Produces artifact<br>
+          Uploaded to Actions
+        </div>
+        <span id="status-build" class="stage-status status-skipped">pending</span>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="stage">
+        <div class="stage-box" id="box-artifact-scan">
+          <span class="icon">🛡️</span>
+          <span class="name">Artifact Scan</span>
+          <span class="sub">MDSSC direct</span>
+        </div>
+        <div class="stage-details">
+          Upload .hpi<br>
+          /api/v1/scans/direct<br>
+          Poll + gate
+        </div>
+        <span id="status-artifact-scan" class="stage-status status-skipped">pending</span>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="stage">
+        <div class="stage-box" id="box-e2e-tests">
+          <span class="icon">🧪</span>
+          <span class="name">E2E Tests</span>
+          <span class="sub">Playwright</span>
+        </div>
+        <div class="stage-details">
+          Mock MDSSC server<br>
+          Threshold / secrets /<br>
+          malware / bad-input
+        </div>
+        <span id="status-e2e-tests" class="stage-status status-skipped">pending</span>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="stage">
+        <div class="stage-box" id="box-report">
+          <span class="icon">📊</span>
+          <span class="name">Report</span>
+          <span class="sub">GitHub Pages</span>
+        </div>
+        <div class="stage-details">
+          Pipeline status<br>
+          E2E results<br>
+          Testing report
+        </div>
+        <span id="status-report" class="stage-status status-skipped">this page</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Stage details table ─────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2.75A2.75 2.75 0 0 1 2.75 0h10.5A2.75 2.75 0 0 1 16 2.75v10.5A2.75 2.75 0 0 1 13.25 16H2.75A2.75 2.75 0 0 1 0 13.25ZM2.75 1.5c-.69 0-1.25.56-1.25 1.25v10.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25V2.75c0-.69-.56-1.25-1.25-1.25Z"/><path d="M5 4.5h6a.75.75 0 0 1 0 1.5H5a.75.75 0 0 1 0-1.5ZM5 8h6a.75.75 0 0 1 0 1.5H5A.75.75 0 0 1 5 8Zm0 3.5h4a.75.75 0 0 1 0 1.5H5a.75.75 0 0 1 0-1.5Z"/></svg>
+      Stage Details
+    </h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Stage</th><th>Tool / Action</th><th>Key API Calls</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><strong>Source Code Scan</strong></td>
+          <td>MDSSC REST API</td>
+          <td><code>POST /api/v1/scans</code> → poll → gate</td>
+          <td><span id="tbl-source-scan" class="stage-status status-skipped">—</span></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><strong>Build Plugin</strong></td>
+          <td>Maven / stub</td>
+          <td>Produces <code>mdssc-plugin.hpi</code></td>
+          <td><span id="tbl-build" class="stage-status status-skipped">—</span></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><strong>Artifact Scan</strong></td>
+          <td>MDSSC REST API</td>
+          <td><code>POST /api/v1/scans/direct</code> → poll → gate</td>
+          <td><span id="tbl-artifact-scan" class="stage-status status-skipped">—</span></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><strong>E2E Tests</strong></td>
+          <td>Playwright + mock server</td>
+          <td>Threshold · Secrets · Malware · Bad-input</td>
+          <td><span id="tbl-e2e-tests" class="stage-status status-skipped">—</span></td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><strong>Report</strong></td>
+          <td>Node.js + GitHub Pages</td>
+          <td>Aggregates all results → deploys this page</td>
+          <td><span class="stage-status status-success">deployed</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Scan results (populated from pipeline-report.json) ─────────────── -->
+  <div class="card" id="scan-card" style="display:none">
+    <h2>🔬 Latest Scan Findings</h2>
+    <div id="scan-content"></div>
+  </div>
+
+  <!-- ── E2E test coverage ────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"/></svg>
+      E2E Test Coverage
+    </h2>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px">
+
+      <div class="test-group">
+        <h4>Vulnerability Threshold (Source &amp; Artifact)</h4>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on critical threshold</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on high threshold</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on medium threshold</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on low threshold</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on unknown severity</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Passes when threshold = none</div>
+      </div>
+
+      <div class="test-group">
+        <h4>Secrets &amp; Malware Detection</h4>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Fails when secrets found + failOnSecret=true</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Passes when secrets found + failOnSecret=false</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Fails when malware found + failOnMalware=true</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Passes when malware found + failOnMalware=false</div>
+      </div>
+
+      <div class="test-group">
+        <h4>Bad Input / Error Handling</h4>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Invalid API key → 401</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Unreachable MDSSC URL throws</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Invalid connection ID → 400</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Workflow not found → 404</div>
+      </div>
+
+      <div class="test-group">
+        <h4>Source Code Scan Step</h4>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Repository not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Branch not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Invalid connection ID → 400</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Workflow not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Default workflow when ID omitted</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Full clean scan flow passes</div>
+      </div>
+
+      <div class="test-group">
+        <h4>Artifact Scan Step</h4>
+        <div class="test-item"><span class="test-dot dot-pass"></span>File not found → 400</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>File too large → 413</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Unsupported file type → 415</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Workflow not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Default workflow when ID omitted</div>
+        <div class="test-item"><span class="test-dot dot-pass"></span>Full clean scan flow passes</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── MDSSC API Reference ─────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2H7.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>
+      MDSSC API Reference
+    </h2>
+    <table>
+      <thead><tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/health</code></td>                   <td>Verify instance reachability</td></tr>
+        <tr><td><code style="color:var(--blue)">POST</code></td>  <td><code>/api/v1/scans</code></td>                    <td>Source scan via repo/branch reference</td></tr>
+        <tr><td><code style="color:var(--blue)">POST</code></td>  <td><code>/api/v1/scans/direct</code></td>             <td>Artifact direct file upload + scan</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/scans/{id}/overview</code></td>      <td>Poll scan status</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/scans/{id}</code></td>               <td>Full result with vulnerability breakdown</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/workflows/{workflowId}</code></td>   <td>Fetch workflow metadata</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Commit / run meta ───────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5Zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z"/></svg>
+      Last Run
+    </h2>
+    <div class="meta-row" id="meta-row">
+      <div class="meta-item"><span class="label">Commit</span><span class="value" id="meta-commit">—</span></div>
+      <div class="meta-item"><span class="label">Branch</span><span class="value" id="meta-branch">—</span></div>
+      <div class="meta-item"><span class="label">Generated</span><span class="value" id="meta-date">—</span></div>
+      <div class="meta-item"><span class="label">Run</span><span class="value"><a id="meta-run" href="#">View on GitHub Actions</a></span></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  MDSSC Jenkins Plugin · University Project · Track B &amp; C by Vera ·
+  <a href="https://github.com/ioanamhl/mdssc_project" target="_blank">GitHub Repository</a>
+</footer>
+
+<script>
+  const STATUS_CLASS = {
+    success:   'status-success',
+    failure:   'status-failure',
+    cancelled: 'status-skipped',
+    skipped:   'status-skipped',
+  };
+  const STATUS_LABEL = {
+    success: '✅ passed', failure: '❌ failed', skipped: '—', cancelled: '🚫 cancelled',
+  };
+  const BOX_CLASS = { success: 'success', failure: 'failure', skipped: 'skipped' };
+
+  function applyStatus(diagramId, tableId, status) {
+    const cls   = STATUS_CLASS[status] || 'status-skipped';
+    const label = STATUS_LABEL[status] || status;
+    const boxCls = BOX_CLASS[status] || 'skipped';
+
+    const dEl = document.getElementById(diagramId);
+    const tEl = document.getElementById(tableId);
+    if (dEl) { dEl.textContent = label; dEl.className = `stage-status ${cls}`; }
+    if (tEl) { tEl.textContent = label; tEl.className = `stage-status ${cls}`; }
+
+    const boxId = diagramId.replace('status-', 'box-');
+    const box = document.getElementById(boxId);
+    if (box) box.classList.add(boxCls);
+  }
+
+  function renderScanSummary(label, scan) {
+    if (!scan || scan.mock) return '';
+    const s = scan.summary || {};
+    return `
+      <div style="margin-bottom:16px">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${label}</div>
+        <div class="severity-grid">
+          ${s.critical > 0 ? `<span class="sev-chip sev-critical">Critical: ${s.critical}</span>` : ''}
+          ${s.high     > 0 ? `<span class="sev-chip sev-high">High: ${s.high}</span>` : ''}
+          ${s.medium   > 0 ? `<span class="sev-chip sev-medium">Medium: ${s.medium}</span>` : ''}
+          ${s.low      > 0 ? `<span class="sev-chip sev-low">Low: ${s.low}</span>` : ''}
+          ${s.unknown  > 0 ? `<span class="sev-chip sev-unknown">Unknown: ${s.unknown}</span>` : ''}
+          ${!s.critical && !s.high && !s.medium && !s.low && !s.unknown
+            ? `<span class="sev-chip sev-ok">✓ No vulnerabilities</span>` : ''}
+          ${scan.secrets  > 0 ? `<span class="sev-chip sev-critical">Secrets: ${scan.secrets}</span>`  : ''}
+          ${scan.malware  > 0 ? `<span class="sev-chip sev-critical">Malware: ${scan.malware}</span>`  : ''}
+        </div>
+      </div>`;
+  }
+
+  async function loadReport() {
+    let report = null;
+    try {
+      const res = await fetch('pipeline-report.json');
+      if (res.ok) report = await res.json();
+    } catch { /* no report yet */ }
+
+    if (!report) {
+      document.getElementById('banner-text').textContent = 'No pipeline report found yet — push to main to trigger the first run.';
+      return;
+    }
+
+    // Banner
+    const banner = document.getElementById('overall-banner');
+    const bannerText = document.getElementById('banner-text');
+    const bannerIcon = document.getElementById('banner-icon');
+    if (report.overallStatus === 'success') {
+      banner.className = 'status-banner banner-success';
+      bannerIcon.textContent = '✅';
+      bannerText.textContent = 'All pipeline stages passed';
+    } else {
+      banner.className = 'status-banner banner-failure';
+      bannerIcon.textContent = '❌';
+      bannerText.textContent = 'One or more pipeline stages failed';
+    }
+
+    // Stage statuses
+    const s = report.stages || {};
+    applyStatus('status-source-scan',  'tbl-source-scan',  s.sourceCodeScan?.status);
+    applyStatus('status-build',        'tbl-build',        s.build?.status);
+    applyStatus('status-artifact-scan','tbl-artifact-scan',s.artifactScan?.status);
+    applyStatus('status-e2e-tests',    'tbl-e2e-tests',    s.e2eTests?.status);
+
+    // Scan summaries
+    const scanHTML = [
+      renderScanSummary('Source Code Scan', s.sourceCodeScan?.result),
+      renderScanSummary('Artifact Scan',    s.artifactScan?.result),
+    ].filter(Boolean).join('');
+    if (scanHTML) {
+      document.getElementById('scan-card').style.display = '';
+      document.getElementById('scan-content').innerHTML = scanHTML;
+    }
+
+    // Meta
+    document.getElementById('meta-commit').textContent = (report.commit || '').slice(0, 8) || '—';
+    document.getElementById('meta-branch').textContent = report.branch || '—';
+    document.getElementById('meta-date').textContent   = report.generatedAt
+      ? new Date(report.generatedAt).toLocaleString() : '—';
+    const runLink = document.getElementById('meta-run');
+    if (report.runUrl && report.runUrl !== '#') runLink.href = report.runUrl;
+  }
+
+  loadReport();
+</script>
+
+</body>
+</html>
