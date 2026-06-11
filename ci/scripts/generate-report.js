@@ -24,6 +24,11 @@ const stages = {
     status: process.env.SOURCE_SCAN_STATUS || 'skipped',
     result: readJson(path.join(ARTIFACTS, 'source-scan-results', 'source-scan.json')),
   },
+  securityScan: {
+    label: 'Security Scan',
+    status: process.env.SECURITY_SCAN_STATUS || 'skipped',
+    result: readJson(path.join(ARTIFACTS, 'security-audit', 'e2e-audit.json')),
+  },
   build: {
     label: 'Build Plugin (.hpi)',
     status: process.env.BUILD_STATUS || 'skipped',

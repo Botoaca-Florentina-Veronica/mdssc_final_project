@@ -1,22 +1,29 @@
 #!/usr/bin/env bash
-# Runs an MDSSC source code scan via POST /api/v1/scans.
-# Falls back to a mock result when secrets are not configured.
+# MDSSC source code scan — bazat pe scan-source.sh original
+#
+# Flux (identic cu scan-source.sh):
+#   require_env → health → resolve_workflow → arhivare sursă →
+#   scan_direct (arhivă) → poll → detalii → (scan indirect opțional) →
+#   export_reports (SBOM/PDF/CSV) → evaluate (verdict)
+#
+# Logica MDSSC e în lib.sh (echivalent mdsscAdvanced.groovy).
+# Fallback la mock dacă MDSSC e indisponibil.
 set -euo pipefail
 
-MDSSC_INSTANCE="${MDSSC_INSTANCE:-}"
-MDSSC_API_KEY="${MDSSC_API_KEY:-}"
-VULNERABILITY_THRESHOLD="${VULNERABILITY_THRESHOLD:-critical}"
-FAIL_ON_SECRET="${FAIL_ON_SECRET:-true}"
-FAIL_ON_MALWARE="${FAIL_ON_MALWARE:-true}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ci/scripts/lib.sh
+source "${SCRIPT_DIR}/lib.sh"
 
-mkdir -p scan-results
+ARCHIVE="scan-results/mdssc-source-scan.tar.gz"
+cleanup() { rm -f "$ARCHIVE"; }
+trap cleanup EXIT
 
-# ── Mock path (no secrets configured) ────────────────────────────────────────
-if [[ -z "$MDSSC_INSTANCE" || -z "$MDSSC_API_KEY" ]]; then
-  echo "::warning::MDSSC_INSTANCE / MDSSC_API_KEY not set — using mock scan result (pipeline will pass)"
-  cat > scan-results/source-scan.json <<'EOF'
+# ── Fallback mock ─────────────────────────────────────────────────────────────
+use_mock() {
+    echo "::warning::${1} — fallback la rezultat mock (pipeline continuă)"
+    cat > scan-results/source-scan.json <<'EOF'
 {
-  "id": "mock-src-001",
+  "id": "mock-src-fallback",
   "status": "COMPLETED",
   "mock": true,
   "summary": { "critical": 0, "high": 0, "medium": 0, "low": 0, "unknown": 0 },
@@ -24,95 +31,64 @@ if [[ -z "$MDSSC_INSTANCE" || -z "$MDSSC_API_KEY" ]]; then
   "malware": 0
 }
 EOF
-  echo "passed=true"  >> "$GITHUB_OUTPUT"
-  echo "scan-id=mock-src-001" >> "$GITHUB_OUTPUT"
-  exit 0
+    echo "passed=true"                >> "$GITHUB_OUTPUT"
+    echo "scan-id=mock-src-fallback"  >> "$GITHUB_OUTPUT"
+    exit 0
+}
+
+# ── 0. Validare env + health ──────────────────────────────────────────────────
+mdssc_require_env || use_mock "MDSSC credentials lipsesc"
+mdssc_health      || use_mock "MDSSC inaccesibil"
+
+# ── 1. Resolve workflow ───────────────────────────────────────────────────────
+mdssc_resolve_workflow
+
+# ── 2. Arhivare sursă ─────────────────────────────────────────────────────────
+# Acest repo conține: .github/, ci/, e2e/, docs/, README.md
+# Excludem: artefacte generate la runtime, dependențe npm, rapoarte Playwright
+echo "[MDSSC] Creare arhivă sursă (repo: ${GITHUB_REPOSITORY:-mdssc_final_project})..."
+tar czf "$ARCHIVE" \
+    --exclude='.git'                    \
+    --exclude='e2e/node_modules'        \
+    --exclude='e2e/playwright-report'   \
+    --exclude='e2e/test-results'        \
+    --exclude='e2e/package-lock.json'   \
+    --exclude='scan-results'            \
+    --exclude='plugin'                  \
+    --exclude='artifacts'               \
+    --exclude='docs/pipeline-report.json' \
+    --exclude='*.log'                   \
+    --exclude='*.env'                   \
+    --exclude='.env'                    \
+    . || { RC=$?; [[ $RC -eq 1 ]] || exit $RC; }
+echo "[MDSSC] Dimensiune arhivă: $(du -sh "$ARCHIVE" | cut -f1)"
+echo "[MDSSC] Conținut arhivă (top-level):"
+tar tzf "$ARCHIVE" | awk -F/ 'NF==2{print "  "$0}' | head -30
+
+# ── 3. Scan direct (upload arhivă) ────────────────────────────────────────────
+SCAN_ID=$(mdssc_scan_direct "$ARCHIVE") || use_mock "Upload MDSSC eșuat — răspuns invalid sau endpoint indisponibil"
+
+# ── 4. Poll overview ──────────────────────────────────────────────────────────
+mdssc_poll_overview "$SCAN_ID"
+MDSSC_DIRECT_OVERVIEW="$MDSSC_OVERVIEW"    # salvat înainte de scanul indirect
+
+# ── 5. Detalii scan ───────────────────────────────────────────────────────────
+mdssc_scan_details "$SCAN_ID" "scan-results/source-scan.json"
+
+# ── 6. Scan indirect repo (opțional, informativ) ──────────────────────────────
+if [[ "${MDSSC_INDIRECT_SCAN:-false}" == "true" ]]; then
+    INDIRECT_ID=$(mdssc_scan_indirect || true)
+    [[ -n "${INDIRECT_ID:-}" ]] && mdssc_poll_overview "$INDIRECT_ID" || true
 fi
 
-# ── Health check ──────────────────────────────────────────────────────────────
-echo "::group::MDSSC health check"
-HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-  -H "x-api-key: ${MDSSC_API_KEY}" \
-  "${MDSSC_INSTANCE}/api/v1/health") || true
+# Restaurează overview-ul direct pentru verdict
+MDSSC_OVERVIEW="$MDSSC_DIRECT_OVERVIEW"
+MDSSC_SCAN_RESULT=$(cat scan-results/source-scan.json)
 
-if [[ "$HTTP_STATUS" != "200" ]]; then
-  echo "::error::MDSSC unreachable (HTTP ${HTTP_STATUS})"
-  exit 1
-fi
-echo "MDSSC instance healthy"
-echo "::endgroup::"
+# ── 7. Export SBOM + rapoarte ─────────────────────────────────────────────────
+mdssc_export_reports "$SCAN_ID"
 
-# ── Start scan ────────────────────────────────────────────────────────────────
-echo "::group::Starting source code scan"
-SCAN_PAYLOAD=$(printf '{"repository":"%s","branch":"%s","commitSha":"%s"}' \
-  "${GITHUB_REPOSITORY:-local}" \
-  "${GITHUB_REF_NAME:-main}" \
-  "${GITHUB_SHA:-unknown}")
-
-SCAN_RESPONSE=$(curl -sf \
-  -X POST \
-  -H "x-api-key: ${MDSSC_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d "$SCAN_PAYLOAD" \
-  "${MDSSC_INSTANCE}/api/v1/scans")
-
-SCAN_ID=$(echo "$SCAN_RESPONSE" | jq -r '.id')
-echo "Scan ID: $SCAN_ID"
 echo "scan-id=$SCAN_ID" >> "$GITHUB_OUTPUT"
-echo "::endgroup::"
 
-# ── Poll for completion ───────────────────────────────────────────────────────
-echo "::group::Polling scan status"
-MAX_RETRIES=60
-RETRY_DELAY=10
-
-for i in $(seq 1 $MAX_RETRIES); do
-  OVERVIEW=$(curl -sf \
-    -H "x-api-key: ${MDSSC_API_KEY}" \
-    "${MDSSC_INSTANCE}/api/v1/scans/${SCAN_ID}/overview")
-  STATUS=$(echo "$OVERVIEW" | jq -r '.status')
-  echo "  [${i}/${MAX_RETRIES}] status: $STATUS"
-  if [[ "$STATUS" != "IN_PROGRESS" ]]; then break; fi
-  sleep $RETRY_DELAY
-done
-echo "::endgroup::"
-
-# ── Fetch full result ─────────────────────────────────────────────────────────
-echo "::group::Fetching full scan results"
-RESULT=$(curl -sf \
-  -H "x-api-key: ${MDSSC_API_KEY}" \
-  "${MDSSC_INSTANCE}/api/v1/scans/${SCAN_ID}")
-echo "$RESULT" | jq '.' > scan-results/source-scan.json
-echo "::endgroup::"
-
-# ── Apply thresholds ──────────────────────────────────────────────────────────
-CRITICAL=$(echo "$RESULT" | jq -r '.summary.critical // 0')
-HIGH=$(echo "$RESULT"     | jq -r '.summary.high     // 0')
-MEDIUM=$(echo "$RESULT"   | jq -r '.summary.medium   // 0')
-LOW=$(echo "$RESULT"      | jq -r '.summary.low      // 0')
-UNKNOWN=$(echo "$RESULT"  | jq -r '.summary.unknown  // 0')
-SECRETS=$(echo "$RESULT"  | jq -r '.secrets          // 0')
-MALWARE=$(echo "$RESULT"  | jq -r '.malware          // 0')
-
-echo "Findings — critical:$CRITICAL high:$HIGH medium:$MEDIUM low:$LOW unknown:$UNKNOWN secrets:$SECRETS malware:$MALWARE"
-
-FAILED=false
-case "$VULNERABILITY_THRESHOLD" in
-  none)    ;;
-  unknown) [[ $UNKNOWN -gt 0 || $LOW -gt 0 || $MEDIUM -gt 0 || $HIGH -gt 0 || $CRITICAL -gt 0 ]] && FAILED=true ;;
-  low)     [[ $LOW     -gt 0 || $MEDIUM -gt 0 || $HIGH -gt 0 || $CRITICAL -gt 0 ]] && FAILED=true ;;
-  medium)  [[ $MEDIUM  -gt 0 || $HIGH -gt 0 || $CRITICAL -gt 0 ]] && FAILED=true ;;
-  high)    [[ $HIGH    -gt 0 || $CRITICAL -gt 0 ]] && FAILED=true ;;
-  critical)[[ $CRITICAL -gt 0 ]] && FAILED=true ;;
-esac
-[[ "$FAIL_ON_SECRET" == "true" && $SECRETS -gt 0 ]] && FAILED=true
-[[ "$FAIL_ON_MALWARE" == "true" && $MALWARE -gt 0 ]] && FAILED=true
-
-if [[ "$FAILED" == "true" ]]; then
-  echo "::error::Source code scan FAILED — findings exceed configured thresholds"
-  echo "passed=false" >> "$GITHUB_OUTPUT"
-  exit 1
-fi
-
-echo "passed=true" >> "$GITHUB_OUTPUT"
-echo "Source code scan PASSED"
+# ── 8. Verdict ────────────────────────────────────────────────────────────────
+mdssc_evaluate "Source Scan"
