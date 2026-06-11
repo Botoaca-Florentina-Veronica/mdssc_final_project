@@ -51,23 +51,26 @@ fi
 # ── 1. Health check ───────────────────────────────────────────────────────────
 mdssc_health || use_mock "MDSSC inaccesibil"
 
-# ── 2. Arhivare artefact ──────────────────────────────────────────────────────
+# ── 2. Resolve workflow (preia MDSSC_WF_ID pentru scan direct) ────────────────
+mdssc_resolve_workflow
+
+# ── 3. Arhivare artefact ──────────────────────────────────────────────────────
 echo "[MDSSC] Creare arhivă artefact din '${ARTIFACT_DIR}'..."
 tar czf "$ARCHIVE" "$ARTIFACT_DIR"
 echo "[MDSSC] Dimensiune arhivă: $(du -sh "$ARCHIVE" | cut -f1)"
 echo "[MDSSC] Conținut:"
 tar tzf "$ARCHIVE" | sed 's/^/  /'
 
-# ── 3. Scan direct ────────────────────────────────────────────────────────────
+# ── 4. Scan direct ────────────────────────────────────────────────────────────
 SCAN_ID=$(mdssc_scan_direct "$ARCHIVE") || use_mock "Upload MDSSC eșuat — răspuns invalid sau endpoint indisponibil"
 
-# ── 4. Poll overview ──────────────────────────────────────────────────────────
+# ── 5. Poll overview ──────────────────────────────────────────────────────────
 mdssc_poll_overview "$SCAN_ID"
 
-# ── 5. Detalii scan ───────────────────────────────────────────────────────────
+# ── 6. Detalii scan ───────────────────────────────────────────────────────────
 mdssc_scan_details "$SCAN_ID" "scan-results/artifact-scan.json"
 
-# ── 6. Export SBOM + rapoarte ─────────────────────────────────────────────────
+# ── 7. Export SBOM + rapoarte ─────────────────────────────────────────────────
 mdssc_export_reports "$SCAN_ID"
 
 echo "scan-id=$SCAN_ID" >> "$GITHUB_OUTPUT"

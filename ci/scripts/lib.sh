@@ -113,21 +113,39 @@ mdssc_scan_direct() {
     local file="$1"
     # Toate mesajele → stderr, doar scan ID → stdout (capturat de caller cu $(...))
     echo "::group::Scan direct: $(basename "$file") ($(du -sh "$file" | cut -f1))" >&2
-    local resp id
-    resp=$(_curl -X POST \
+
+    # Fără -f ca să capturam body-ul chiar și la eroare HTTP
+    # Trimite workflowId dacă e disponibil
+    local wf_arg=""
+    [[ -n "${MDSSC_WF_ID:-}" ]] && wf_arg="-F workflowId=${MDSSC_WF_ID}"
+
+    local raw http_status resp id
+    raw=$(curl -s -w "\n__STATUS__%{http_code}" \
+        -H "${MDSSC_API_KEY_HEADER}: ${MDSSC_API_KEY}" \
+        -X POST \
         -F "file=@${file}" \
-        "${MDSSC_INSTANCE}/api/v1/scans/direct") || {
-        echo "::error::Upload eșuat (curl non-zero). Răspuns: ${resp:-<gol>}" >&2
-        echo "::endgroup::" >&2
-        return 1
-    }
-    id=$(echo "$resp" | jq -r '.id // empty')
-    if [[ -z "$id" || "$id" == "null" ]]; then
-        echo "::error::MDSSC nu a returnat un scan ID valid." >&2
-        echo "Răspuns complet: $resp" >&2
+        $wf_arg \
+        "${MDSSC_INSTANCE}/api/v1/scans/direct") || true
+
+    http_status=$(echo "$raw" | awk -F'__STATUS__' '{print $2}' | tr -d '[:space:]')
+    resp=$(echo "$raw" | awk -F'\n__STATUS__' '{print $1}')
+
+    echo "HTTP Status : $http_status" >&2
+    echo "Răspuns     : $resp"        >&2
+
+    if [[ "$http_status" != 2* ]]; then
+        echo "::error::Upload eșuat (HTTP $http_status)" >&2
         echo "::endgroup::" >&2
         return 1
     fi
+
+    id=$(echo "$resp" | jq -r '.id // empty' 2>/dev/null || true)
+    if [[ -z "$id" || "$id" == "null" ]]; then
+        echo "::error::MDSSC nu a returnat un scan ID valid" >&2
+        echo "::endgroup::" >&2
+        return 1
+    fi
+
     echo "Scan ID: $id" >&2
     echo "::endgroup::"  >&2
     echo "$id"
