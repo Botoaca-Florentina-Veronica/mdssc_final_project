@@ -59,7 +59,7 @@ echo "[MDSSC] Conținut:"
 tar tzf "$ARCHIVE" | sed 's/^/  /'
 
 # ── 3. Scan direct ────────────────────────────────────────────────────────────
-SCAN_ID=$(mdssc_scan_direct "$ARCHIVE")
+SCAN_ID=$(mdssc_scan_direct "$ARCHIVE") || use_mock "Upload MDSSC eșuat — răspuns invalid sau endpoint indisponibil"
 
 # ── 4. Poll overview ──────────────────────────────────────────────────────────
 mdssc_poll_overview "$SCAN_ID"

@@ -116,10 +116,20 @@ mdssc_scan_direct() {
     local resp id
     resp=$(_curl -X POST \
         -F "file=@${file}" \
-        "${MDSSC_INSTANCE}/api/v1/scans/direct")
-    id=$(echo "$resp" | jq -r '.id')
+        "${MDSSC_INSTANCE}/api/v1/scans/direct") || {
+        echo "::error::Upload eșuat (curl non-zero). Răspuns: ${resp:-<gol>}" >&2
+        echo "::endgroup::" >&2
+        return 1
+    }
+    id=$(echo "$resp" | jq -r '.id // empty')
+    if [[ -z "$id" || "$id" == "null" ]]; then
+        echo "::error::MDSSC nu a returnat un scan ID valid." >&2
+        echo "Răspuns complet: $resp" >&2
+        echo "::endgroup::" >&2
+        return 1
+    fi
     echo "Scan ID: $id" >&2
-    echo "::endgroup::"                >&2
+    echo "::endgroup::"  >&2
     echo "$id"
 }
 

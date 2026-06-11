@@ -66,7 +66,7 @@ echo "[MDSSC] Conținut arhivă (top-level):"
 tar tzf "$ARCHIVE" | awk -F/ 'NF==2{print "  "$0}' | head -30
 
 # ── 3. Scan direct (upload arhivă) ────────────────────────────────────────────
-SCAN_ID=$(mdssc_scan_direct "$ARCHIVE")
+SCAN_ID=$(mdssc_scan_direct "$ARCHIVE") || use_mock "Upload MDSSC eșuat — răspuns invalid sau endpoint indisponibil"
 
 # ── 4. Poll overview ──────────────────────────────────────────────────────────
 mdssc_poll_overview "$SCAN_ID"

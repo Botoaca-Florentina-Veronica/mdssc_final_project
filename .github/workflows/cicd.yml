@@ -42,9 +42,10 @@ jobs:
       - name: MDSSC Source Code Scan
         id: scan
         env:
-          MDSSC_INSTANCE:    ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY:     ${{ secrets.MDSSC_API_KEY }}
-          MDSSC_WORKFLOW_ID: ${{ secrets.MDSSC_WORKFLOW_ID }}
+          MDSSC_INSTANCE:        ${{ secrets.MDSSC_INSTANCE }}
+          MDSSC_API_KEY:         ${{ secrets.MDSSC_API_KEY }}
+          MDSSC_API_KEY_HEADER:  ${{ secrets.MDSSC_API_KEY_HEADER || 'apikey' }}
+          MDSSC_WORKFLOW_ID:     ${{ secrets.MDSSC_WORKFLOW_ID }}
         run: bash ci/scripts/mdssc-source-scan.sh
 
       - name: Upload source scan results
@@ -163,9 +164,10 @@ jobs:
       - name: MDSSC Artifact Scan
         id: scan
         env:
-          MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY:  ${{ secrets.MDSSC_API_KEY }}
-          ARTIFACT_DIR:   plugin
+          MDSSC_INSTANCE:       ${{ secrets.MDSSC_INSTANCE }}
+          MDSSC_API_KEY:        ${{ secrets.MDSSC_API_KEY }}
+          MDSSC_API_KEY_HEADER: ${{ secrets.MDSSC_API_KEY_HEADER || 'apikey' }}
+          ARTIFACT_DIR:         plugin
         run: bash ci/scripts/mdssc-artifact-scan.sh
 
       - name: Upload artifact scan results
