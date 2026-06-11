@@ -111,14 +111,15 @@ mdssc_resolve_workflow() {
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_scan_direct() {
     local file="$1"
-    echo "::group::Scan direct: $(basename "$file") ($(du -sh "$file" | cut -f1))"
+    # Toate mesajele → stderr, doar scan ID → stdout (capturat de caller cu $(...))
+    echo "::group::Scan direct: $(basename "$file") ($(du -sh "$file" | cut -f1))" >&2
     local resp id
     resp=$(_curl -X POST \
         -F "file=@${file}" \
         "${MDSSC_INSTANCE}/api/v1/scans/direct")
     id=$(echo "$resp" | jq -r '.id')
-    echo "Scan ID: $id"
-    echo "::endgroup::"
+    echo "Scan ID: $id" >&2
+    echo "::endgroup::"                >&2
     echo "$id"
 }
 
@@ -132,7 +133,8 @@ mdssc_scan_indirect() {
     [[ "$branch" == "HEAD" ]] && branch="main"
     local label="${GITHUB_REPOSITORY:-repo}-${branch}"
 
-    echo "::group::Scan indirect repo (branch: $branch)"
+    # Toate mesajele → stderr, doar scan ID → stdout
+    echo "::group::Scan indirect repo (branch: $branch)" >&2
     local payload resp id
     payload=$(jq -n \
         --arg wf  "$MDSSC_WF_ID" \
@@ -146,8 +148,8 @@ mdssc_scan_indirect() {
         -d "$payload" \
         "${MDSSC_INSTANCE}/api/v1/scans")
     id=$(echo "$resp" | jq -r '.id')
-    echo "Indirect scan ID: $id"
-    echo "::endgroup::"
+    echo "Indirect scan ID: $id" >&2
+    echo "::endgroup::"          >&2
     echo "$id"
 }
 
