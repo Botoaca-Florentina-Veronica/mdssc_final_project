@@ -192,13 +192,29 @@ mdssc_poll_overview() {
     local scan_id="$1"
     echo "::group::Poll $scan_id (timeout: ${MDSSC_SCAN_TIMEOUT}s)"
     local elapsed=0
+    local first_iter=true
+
     while [[ $elapsed -lt $MDSSC_SCAN_TIMEOUT ]]; do
-        MDSSC_OVERVIEW=$(_curl "${MDSSC_INSTANCE}/api/v1/scans/${scan_id}/overview") || true
+        # Încearcă /overview; dacă pică (404 sau alt HTTP error), cade pe /scans/{id}
+        MDSSC_OVERVIEW=$(_curl "${MDSSC_INSTANCE}/api/v1/scans/${scan_id}/overview") || \
+            MDSSC_OVERVIEW=$(_curl "${MDSSC_INSTANCE}/api/v1/scans/${scan_id}")      || true
+
+        # Prima iterație: loghează răspunsul brut pentru debug
+        if [[ "$first_iter" == "true" ]]; then
+            echo "  [debug] răspuns brut: ${MDSSC_OVERVIEW:0:300}"
+            first_iter=false
+        fi
+
         local status
-        # MDSSC folosește PascalCase — verificăm ambele variante
-        status=$(echo "$MDSSC_OVERVIEW" | jq -r '(.status // .Status) // "IN_PROGRESS"' 2>/dev/null || echo "IN_PROGRESS")
+        # MDSSC poate folosi oricare din aceste câmpuri
+        status=$(echo "$MDSSC_OVERVIEW" | jq -r \
+            '(.status // .Status // .ScanStatus // .scanStatus // .state // .State) // empty' \
+            2>/dev/null || true)
+
+        [[ -z "$status" ]] && status="IN_PROGRESS"
         echo "  [${elapsed}s] $status"
         [[ "$status" != "IN_PROGRESS" ]] && break
+
         sleep "$MDSSC_POLL_INTERVAL"
         elapsed=$((elapsed + MDSSC_POLL_INTERVAL))
     done
