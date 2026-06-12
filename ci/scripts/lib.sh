@@ -142,7 +142,8 @@ mdssc_scan_direct() {
         return 1
     fi
 
-    id=$(echo "$resp" | jq -r '.id // empty' 2>/dev/null || true)
+    # MDSSC returnează {"ScanIds":["<uuid>"],...} — nu {"id":"<uuid>"}
+    id=$(echo "$resp" | jq -r '(.ScanIds[0] // .id) // empty' 2>/dev/null || true)
     if [[ -z "$id" || "$id" == "null" ]]; then
         echo "::error::MDSSC — ID scan invalid — răspuns: $(echo "$resp" | head -c 300)"
         return 1
@@ -176,7 +177,7 @@ mdssc_scan_indirect() {
         -H "Content-Type: application/json" \
         -d "$payload" \
         "${MDSSC_INSTANCE}/api/v1/scans")
-    id=$(echo "$resp" | jq -r '.id')
+    id=$(echo "$resp" | jq -r '(.ScanIds[0] // .id) // empty' 2>/dev/null || true)
     echo "Indirect scan ID: $id" >&2
     echo "::endgroup::"          >&2
     echo "$id"
