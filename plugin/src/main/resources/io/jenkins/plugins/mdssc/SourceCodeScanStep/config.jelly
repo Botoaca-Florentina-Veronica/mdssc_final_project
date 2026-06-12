@@ -1,0 +1,49 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:c="/lib/credentials">
+
+  <f:entry title="MDSSC Instance URL" field="mdsscInstance">
+    <f:textbox placeholder="http://your-mdssc-instance"/>
+  </f:entry>
+
+  <f:entry title="API Key (Credentials)" field="credentialsId">
+    <c:select/>
+  </f:entry>
+
+  <f:entry title="Workflow ID (optional)" field="workflowId">
+    <f:textbox placeholder="Leave empty to auto-detect default workflow"/>
+  </f:entry>
+
+  <f:entry title="Connection" field="connectionId">
+    <f:select/>
+  </f:entry>
+
+  <f:entry title="Repository" field="repository">
+    <f:select/>
+  </f:entry>
+
+  <f:entry title="Branch" field="branch">
+    <f:select/>
+  </f:entry>
+
+  <f:entry title="Vulnerability Threshold" field="vulnerabilityThreshold">
+    <f:select/>
+  </f:entry>
+
+  <f:entry title="Fail on Secret" field="failOnSecret">
+    <f:checkbox/>
+  </f:entry>
+
+  <f:entry title="Fail on Malware" field="failOnMalware">
+    <f:checkbox default="true"/>
+  </f:entry>
+
+  <f:advanced>
+    <f:entry title="Scan Timeout (seconds)" field="scanTimeout">
+      <f:number default="900" min="60"/>
+    </f:entry>
+    <f:entry title="Poll Interval (seconds)" field="pollInterval">
+      <f:number default="10" min="5"/>
+    </f:entry>
+  </f:advanced>
+
+</j:jelly>
