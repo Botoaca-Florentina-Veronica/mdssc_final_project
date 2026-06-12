@@ -149,7 +149,7 @@ mdssc_scan_direct() {
         return 1
     fi
 
-    echo "::notice::MDSSC scan pornit — ID: $id"
+    echo "::notice::MDSSC scan pornit — ID: $id" >&2
     echo "$id"
 }
 
