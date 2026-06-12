@@ -211,9 +211,13 @@ mdssc_poll_overview() {
             '(.status // .Status // .ScanStatus // .scanStatus // .state // .State) // empty' \
             2>/dev/null || true)
 
-        [[ -z "$status" ]] && status="IN_PROGRESS"
+        [[ -z "$status" ]] && status="Running"
         echo "  [${elapsed}s] $status"
-        [[ "$status" != "IN_PROGRESS" ]] && break
+        # MDSSC folosește "Running" (nu "IN_PROGRESS") ca status activ
+        case "$status" in
+            Running|RUNNING|IN_PROGRESS|Scanning|SCANNING|Pending|PENDING) ;;
+            *) break ;;
+        esac
 
         sleep "$MDSSC_POLL_INTERVAL"
         elapsed=$((elapsed + MDSSC_POLL_INTERVAL))
@@ -279,14 +283,14 @@ mdssc_evaluate() {
     fi
 
     local critical high medium low unknown secrets malware
-    # MDSSC poate folosi PascalCase sau camelCase pentru câmpuri
-    critical=$(echo "$result" | jq -r '(.summary.critical // .Summary.Critical) // 0' 2>/dev/null || echo 0)
-    high=$(echo "$result"     | jq -r '(.summary.high     // .Summary.High)     // 0' 2>/dev/null || echo 0)
-    medium=$(echo "$result"   | jq -r '(.summary.medium   // .Summary.Medium)   // 0' 2>/dev/null || echo 0)
-    low=$(echo "$result"      | jq -r '(.summary.low      // .Summary.Low)      // 0' 2>/dev/null || echo 0)
-    unknown=$(echo "$result"  | jq -r '(.summary.unknown  // .Summary.Unknown)  // 0' 2>/dev/null || echo 0)
-    secrets=$(echo "$result"  | jq -r '(.secrets          // .Secrets)          // 0' 2>/dev/null || echo 0)
-    malware=$(echo "$result"  | jq -r '(.malware          // .Malware)          // 0' 2>/dev/null || echo 0)
+    # Câmpuri reale MDSSC: VulnerabilityIssues.{critical,...}, FilesWithSecrets, InfectedFiles
+    critical=$(echo "$result" | jq -r '(.VulnerabilityIssues.critical // .summary.critical // .Summary.Critical) // 0' 2>/dev/null || echo 0)
+    high=$(echo "$result"     | jq -r '(.VulnerabilityIssues.high     // .summary.high     // .Summary.High)     // 0' 2>/dev/null || echo 0)
+    medium=$(echo "$result"   | jq -r '(.VulnerabilityIssues.medium   // .summary.medium   // .Summary.Medium)   // 0' 2>/dev/null || echo 0)
+    low=$(echo "$result"      | jq -r '(.VulnerabilityIssues.low      // .summary.low      // .Summary.Low)      // 0' 2>/dev/null || echo 0)
+    unknown=$(echo "$result"  | jq -r '(.VulnerabilityIssues.unknown  // .summary.unknown  // .Summary.Unknown)  // 0' 2>/dev/null || echo 0)
+    secrets=$(echo "$result"  | jq -r '(.FilesWithSecrets // .secrets // .Secrets)         // 0' 2>/dev/null || echo 0)
+    malware=$(echo "$result"  | jq -r '(.InfectedFiles    // .malware // .Malware)         // 0' 2>/dev/null || echo 0)
 
     echo ""
     echo "=========================================="
