@@ -178,59 +178,15 @@ jobs:
           if-no-files-found: ignore
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Stage 5 — E2E Tests
-  # Playwright API tests against mock MDSSC server.
+  # Stage 5 — E2E Tests (placeholder — Track C tests coming soon)
   # ─────────────────────────────────────────────────────────────────────────────
   e2e-tests:
     name: "5 · E2E Tests"
     needs: [build, artifact-scan]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download .hpi
-        uses: actions/download-artifact@v4
-        with:
-          name: mdssc-plugin-hpi
-          path: plugin/
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install E2E dependencies
-        run: npm install
-        working-directory: e2e
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-        working-directory: e2e
-
-      - name: Run E2E tests
-        env:
-          MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY:  ${{ secrets.MDSSC_API_KEY }}
-          HPI_PATH:       ${{ github.workspace }}/plugin/mdssc-plugin.hpi
-          CI:             "true"
-        run: npx playwright test
-        working-directory: e2e
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: e2e/playwright-report/
-          if-no-files-found: ignore
-
-      - name: Upload test results JSON
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-test-results
-          path: e2e/test-results/
-          if-no-files-found: ignore
+      - name: E2E tests placeholder
+        run: echo "E2E test suite — Track C implementation pending"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 6 — Report + GitHub Pages

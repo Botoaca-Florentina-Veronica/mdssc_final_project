@@ -9,6 +9,7 @@
 
 # ── Variabile cu valori implicite ─────────────────────────────────────────────
 MDSSC_INSTANCE="${MDSSC_INSTANCE:-}"
+MDSSC_INSTANCE="${MDSSC_INSTANCE%/}"   # strip trailing slash
 MDSSC_API_KEY="${MDSSC_API_KEY:-}"
 MDSSC_API_KEY_HEADER="${MDSSC_API_KEY_HEADER:-apikey}"
 MDSSC_WORKFLOW_ID="${MDSSC_WORKFLOW_ID:-}"
@@ -114,40 +115,40 @@ mdssc_scan_direct() {
     # Toate mesajele → stderr, doar scan ID → stdout (capturat de caller cu $(...))
     echo "::group::Scan direct: $(basename "$file") ($(du -sh "$file" | cut -f1))" >&2
 
-    # Fără -f ca să capturam body-ul chiar și la eroare HTTP
-    # Trimite workflowId dacă e disponibil
     local wf_arg=""
     [[ -n "${MDSSC_WF_ID:-}" ]] && wf_arg="-F workflowId=${MDSSC_WF_ID}"
 
-    local raw http_status resp id
-    raw=$(curl -s -w "\n__STATUS__%{http_code}" \
+    # Temp file: body și status se capturează separat — fără riscul de a mixa cele două
+    local tmp_resp http_status resp id
+    tmp_resp=$(mktemp)
+    http_status=$(curl -s \
+        -o "$tmp_resp" \
+        -w "%{http_code}" \
         -H "${MDSSC_API_KEY_HEADER}: ${MDSSC_API_KEY}" \
         -X POST \
         -F "file=@${file}" \
-        $wf_arg \
+        ${wf_arg} \
         "${MDSSC_INSTANCE}/api/v1/scans/direct") || true
-
-    http_status=$(echo "$raw" | awk -F'__STATUS__' '{print $2}' | tr -d '[:space:]')
-    resp=$(echo "$raw" | awk -F'\n__STATUS__' '{print $1}')
+    resp=$(cat "$tmp_resp")
+    rm -f "$tmp_resp"
 
     echo "HTTP Status : $http_status" >&2
     echo "Răspuns     : $resp"        >&2
+    echo "::endgroup::"               >&2
 
+    # Erori vizibile în log (în afara grupului colapsat)
     if [[ "$http_status" != 2* ]]; then
-        echo "::error::Upload eșuat (HTTP $http_status)" >&2
-        echo "::endgroup::" >&2
+        echo "::error::MDSSC upload eșuat — HTTP ${http_status} — $(echo "$resp" | head -c 300)"
         return 1
     fi
 
     id=$(echo "$resp" | jq -r '.id // empty' 2>/dev/null || true)
     if [[ -z "$id" || "$id" == "null" ]]; then
-        echo "::error::MDSSC nu a returnat un scan ID valid" >&2
-        echo "::endgroup::" >&2
+        echo "::error::MDSSC — ID scan invalid — răspuns: $(echo "$resp" | head -c 300)"
         return 1
     fi
 
-    echo "Scan ID: $id" >&2
-    echo "::endgroup::"  >&2
+    echo "::notice::MDSSC scan pornit — ID: $id"
     echo "$id"
 }
 

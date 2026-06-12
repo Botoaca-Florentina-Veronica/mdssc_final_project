@@ -1,6 +1,6 @@
 # MDSSC Jenkins Plugin & CI/CD Pipeline
 
-[![CI/CD](https://github.com/ioanamhl/mdssc_project/actions/workflows/cicd.yml/badge.svg)](https://github.com/ioanamhl/mdssc_project/actions/workflows/cicd.yml)
+[![CI/CD](https://github.com/Botoaca-Florentina-Veronica/mdssc_final_project/actions/workflows/cicd.yml/badge.svg)](https://github.com/Botoaca-Florentina-Veronica/mdssc_final_project/actions/workflows/cicd.yml)
 
 A university project that integrates **OPSWAT MetaDefender Supply Chain Security (MDSSC)** into a Jenkins plugin and a full GitHub Actions CI/CD pipeline, including end-to-end tests and automated reporting.
 
