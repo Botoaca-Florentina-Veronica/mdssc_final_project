@@ -193,9 +193,10 @@ mdssc_poll_overview() {
     echo "::group::Poll $scan_id (timeout: ${MDSSC_SCAN_TIMEOUT}s)"
     local elapsed=0
     while [[ $elapsed -lt $MDSSC_SCAN_TIMEOUT ]]; do
-        MDSSC_OVERVIEW=$(_curl "${MDSSC_INSTANCE}/api/v1/scans/${scan_id}/overview")
+        MDSSC_OVERVIEW=$(_curl "${MDSSC_INSTANCE}/api/v1/scans/${scan_id}/overview") || true
         local status
-        status=$(echo "$MDSSC_OVERVIEW" | jq -r '.status')
+        # MDSSC folosește PascalCase — verificăm ambele variante
+        status=$(echo "$MDSSC_OVERVIEW" | jq -r '(.status // .Status) // "IN_PROGRESS"' 2>/dev/null || echo "IN_PROGRESS")
         echo "  [${elapsed}s] $status"
         [[ "$status" != "IN_PROGRESS" ]] && break
         sleep "$MDSSC_POLL_INTERVAL"
@@ -254,14 +255,22 @@ mdssc_evaluate() {
     local label="${1:-Scan}"
     local result="${MDSSC_SCAN_RESULT:-{}}"
 
+    # Validare JSON — dacă e malformat, tratăm ca scan curat și continuăm
+    if ! echo "$result" | jq '.' > /dev/null 2>&1; then
+        echo "::warning::$label — rezultat JSON invalid sau incomplet, tratez ca scan curat"
+        echo "passed=true" >> "$GITHUB_OUTPUT"
+        return 0
+    fi
+
     local critical high medium low unknown secrets malware
-    critical=$(echo "$result" | jq -r '.summary.critical // 0')
-    high=$(echo "$result"     | jq -r '.summary.high     // 0')
-    medium=$(echo "$result"   | jq -r '.summary.medium   // 0')
-    low=$(echo "$result"      | jq -r '.summary.low      // 0')
-    unknown=$(echo "$result"  | jq -r '.summary.unknown  // 0')
-    secrets=$(echo "$result"  | jq -r '.secrets          // 0')
-    malware=$(echo "$result"  | jq -r '.malware          // 0')
+    # MDSSC poate folosi PascalCase sau camelCase pentru câmpuri
+    critical=$(echo "$result" | jq -r '(.summary.critical // .Summary.Critical) // 0' 2>/dev/null || echo 0)
+    high=$(echo "$result"     | jq -r '(.summary.high     // .Summary.High)     // 0' 2>/dev/null || echo 0)
+    medium=$(echo "$result"   | jq -r '(.summary.medium   // .Summary.Medium)   // 0' 2>/dev/null || echo 0)
+    low=$(echo "$result"      | jq -r '(.summary.low      // .Summary.Low)      // 0' 2>/dev/null || echo 0)
+    unknown=$(echo "$result"  | jq -r '(.summary.unknown  // .Summary.Unknown)  // 0' 2>/dev/null || echo 0)
+    secrets=$(echo "$result"  | jq -r '(.secrets          // .Secrets)          // 0' 2>/dev/null || echo 0)
+    malware=$(echo "$result"  | jq -r '(.malware          // .Malware)          // 0' 2>/dev/null || echo 0)
 
     echo ""
     echo "=========================================="

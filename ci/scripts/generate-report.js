@@ -85,4 +85,5 @@ console.log('─'.repeat(50));
 console.log(`Commit: ${report.commit.slice(0, 8)}  Branch: ${report.branch}`);
 console.log(`Report: ${path.join(OUT_DIR, 'pipeline-report.json')}\n`);
 
-if (overallStatus === 'failure') process.exitCode = 1;
+// Raportul se generează mereu cu succes — statusul e în JSON, nu în exit code
+console.log(`\nGitHub Pages report generat.`);

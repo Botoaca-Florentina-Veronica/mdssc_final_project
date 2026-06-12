@@ -1,3 +1,7 @@
 plugin/target/
 *.hpi
 *.jar
+test-results/
+scan-results/
+e2e/node_modules/
+e2e/playwright-report/
