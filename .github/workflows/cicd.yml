@@ -351,7 +351,7 @@ jobs:
           BRANCH:     ${{ github.ref_name }}
           REPO:       ${{ github.repository }}
           MDSSC_INSTANCE:      ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_REPOSITORY_ID: ${{ secrets.MDSSC_REPOSITORY_ID }}
+          MDSSC_REPOSITORY_ID: ${{ secrets.REPOSITORY_ID }}
         run: node ci/scripts/generate-report.js
 
       - name: Copy report into docs site
