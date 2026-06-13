@@ -4,6 +4,74 @@ on:
   push:
   pull_request:
 
+  # ── Rulare manuală cu parametri personalizați ────────────────────────────────
+  # Accesează GitHub → Actions → CI/CD → Run workflow → completează câmpurile.
+  # Valorile introduse aici suprascriu ci/mdssc-params.env.
+  # Lasa gol pentru a folosi valorile implicite din ci/mdssc-params.env.
+  workflow_dispatch:
+    inputs:
+      # ── Conexiune ──────────────────────────────────────────────────────────
+      api_key_header:
+        description: 'Header HTTP pentru API key (ex: apikey)'
+        required: false
+        default: ''
+
+      # ── Workflow MDSSC ─────────────────────────────────────────────────────
+      workflow_id:
+        description: 'MDSSC Workflow ID (gol = auto-detectare)'
+        required: false
+        default: ''
+
+      # ── Threshold vulnerabilități ──────────────────────────────────────────
+      vulnerability_threshold:
+        description: 'Severitate minimă care eșuează build-ul'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - none
+          - low
+          - medium
+          - high
+          - critical
+
+      # ── Opțiuni fail ───────────────────────────────────────────────────────
+      fail_on_secret:
+        description: 'Eșuează dacă găsește secrete hardcodate (true/false)'
+        required: false
+        default: ''
+      fail_on_malware:
+        description: 'Eșuează dacă găsește malware (true/false)'
+        required: false
+        default: ''
+
+      # ── Timing ────────────────────────────────────────────────────────────
+      scan_timeout:
+        description: 'Timeout scan în secunde (implicit: 900)'
+        required: false
+        default: ''
+      poll_interval:
+        description: 'Interval poll în secunde (implicit: 10)'
+        required: false
+        default: ''
+
+      # ── Artifact scan ──────────────────────────────────────────────────────
+      max_upload_mb:
+        description: 'Dimensiune maximă artefact pentru upload în MB (implicit: 100)'
+        required: false
+        default: ''
+      skip_large_artifacts:
+        description: 'Sare artefactele prea mari în loc să dea fail (true/false)'
+        required: false
+        default: ''
+
+      # ── Source scan ────────────────────────────────────────────────────────
+      branch:
+        description: 'Branch de scanat (gol = branch-ul curent)'
+        required: false
+        default: ''
+
 permissions:
   contents: read
   pages: write
@@ -13,22 +81,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# ── Default scan settings (mirrors Jenkinsfile parameters) ────────────────────
+# ── Valori implicite — suprascrise de workflow_dispatch inputs sau ci/mdssc-params.env ──
 env:
-  MDSSC_API_KEY_HEADER:          apikey
-  VULNERABILITY_THRESHOLD:       critical
-  FAIL_ON_SECRET:                "true"
-  FAIL_ON_MALWARE:               "true"
-  MDSSC_SCAN_TIMEOUT:            "900"
-  MDSSC_POLL_INTERVAL:           "10"
-  MDSSC_MAX_UPLOAD_MB:           "100"
-  MDSSC_SKIP_LARGE_ARTIFACTS:    "true"
+  MDSSC_API_KEY_HEADER:       ${{ inputs.api_key_header         || 'apikey' }}
+  VULNERABILITY_THRESHOLD:    ${{ inputs.vulnerability_threshold || 'critical' }}
+  FAIL_ON_SECRET:             ${{ inputs.fail_on_secret          || 'true' }}
+  FAIL_ON_MALWARE:            ${{ inputs.fail_on_malware         || 'true' }}
+  MDSSC_SCAN_TIMEOUT:         ${{ inputs.scan_timeout            || '900' }}
+  MDSSC_POLL_INTERVAL:        ${{ inputs.poll_interval           || '10' }}
+  MDSSC_MAX_UPLOAD_MB:        ${{ inputs.max_upload_mb           || '100' }}
+  MDSSC_SKIP_LARGE_ARTIFACTS: ${{ inputs.skip_large_artifacts    || 'true' }}
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 1 — Source Code Scan
-  # Health check → auto-detect workflow → indirect branch scan
-  # Mirrors: Check Health + Fetch Workflow + MDSSC-Source Code Scan stages
+  # Indirect scan: MDSSC se conectează la GitHub și scanează repo-ul direct.
+  # Identic cu Stage 5 din Jenkins pipeline (MDSSC-Source Code Scan).
   # ─────────────────────────────────────────────────────────────────────────────
   source-scan:
     name: "1 · Source Code Scan"
@@ -39,13 +107,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: MDSSC Source Code Scan
+      - name: MDSSC Source Code Scan (indirect — MDSSC pulls from GitHub)
         id: scan
         env:
+          # Credențiale — vin din GitHub Secrets (Settings → Secrets → Actions)
           MDSSC_INSTANCE:        ${{ secrets.MDSSC_INSTANCE }}
           MDSSC_API_KEY:         ${{ secrets.MDSSC_API_KEY }}
-          MDSSC_API_KEY_HEADER:  ${{ secrets.MDSSC_API_KEY_HEADER || 'apikey' }}
-          MDSSC_WORKFLOW_ID:     ${{ secrets.MDSSC_WORKFLOW_ID }}
+          # Conexiune MDSSC–GitHub — auto-detectate din workflow dacă nu sunt setate
+          MDSSC_WORKFLOW_ID:     ${{ inputs.workflow_id || secrets.MDSSC_WORKFLOW_ID }}
+          MDSSC_STORAGE_ID:      ${{ secrets.MDSSC_STORAGE_ID }}
+          MDSSC_REPOSITORY_ID:   ${{ secrets.MDSSC_REPOSITORY_ID }}
+          # Branch de scanat
+          MDSSC_BRANCH:          ${{ inputs.branch || github.ref_name }}
+          # Parametri scan — din workflow_dispatch inputs sau env globale
+          MDSSC_API_KEY_HEADER:  ${{ env.MDSSC_API_KEY_HEADER }}
+          VULNERABILITY_THRESHOLD: ${{ env.VULNERABILITY_THRESHOLD }}
+          FAIL_ON_SECRET:        ${{ env.FAIL_ON_SECRET }}
+          FAIL_ON_MALWARE:       ${{ env.FAIL_ON_MALWARE }}
+          MDSSC_SCAN_TIMEOUT:    ${{ env.MDSSC_SCAN_TIMEOUT }}
+          MDSSC_POLL_INTERVAL:   ${{ env.MDSSC_POLL_INTERVAL }}
         run: bash ci/scripts/mdssc-source-scan.sh
 
       - name: Upload source scan results
@@ -58,8 +138,7 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 2 — Security Scan
-  # npm audit on e2e/ (Node.js). Mirrors the Security Scan stage in Jenkinsfile.
-  # Runs in parallel with source-scan (no dependency between them).
+  # npm audit pe dependențele e2e/. Rulează în paralel cu source-scan.
   # ─────────────────────────────────────────────────────────────────────────────
   security-scan:
     name: "2 · Security Scan"
@@ -101,8 +180,7 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 3 — Build Plugin (.hpi)
-  # Waits for both source-scan and security-scan to finish.
-  # Uses real plugin if plugin-src/pom.xml exists, otherwise generates stub.
+  # Așteaptă source-scan + security-scan. Construiește plugin-ul Jenkins.
   # ─────────────────────────────────────────────────────────────────────────────
   build:
     name: "3 · Build Plugin (.hpi)"
@@ -111,38 +189,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 11
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: "11"
+          java-version: "17"
           distribution: temurin
 
       - name: Build .hpi
         run: |
-          mkdir -p plugin
-          if [ -f plugin-src/pom.xml ]; then
-            echo "Building real plugin from plugin-src/"
-            cd plugin-src && mvn -B package -DskipTests
-            cp target/*.hpi ../plugin/mdssc-plugin.hpi
+          mkdir -p plugin-out
+          if [ -f plugin/pom.xml ]; then
+            echo "Building real plugin from plugin/"
+            cd plugin && mvn -B package -DskipTests
+            cp target/*.hpi ../plugin-out/mdssc-plugin.hpi
           else
-            echo "::notice::Track A plugin not yet available — generating placeholder .hpi"
+            echo "::notice::Plugin source not found — generating placeholder .hpi"
             mkdir -p _stub/META-INF
-            printf 'Manifest-Version: 1.0\nPlugin-Class: io.mdssc.MdsscPlugin\nPlugin-Version: 0.0.1-SNAPSHOT\nPlugin-Id: mdssc-scanner\n' \
+            printf 'Manifest-Version: 1.0\nPlugin-Class: io.mdssc.MdsscPlugin\nPlugin-Version: 1.0.0-SNAPSHOT\nPlugin-Id: mdssc-scanner\n' \
               > _stub/META-INF/MANIFEST.MF
-            cd _stub && zip -r ../plugin/mdssc-plugin.hpi . -q
-            echo "Placeholder .hpi created ($(du -sh ../plugin/mdssc-plugin.hpi | cut -f1))"
+            cd _stub && zip -r ../plugin-out/mdssc-plugin.hpi . -q
+            echo "Placeholder .hpi created"
           fi
 
       - name: Upload .hpi artifact
         uses: actions/upload-artifact@v4
         with:
           name: mdssc-plugin-hpi
-          path: plugin/mdssc-plugin.hpi
+          path: plugin-out/mdssc-plugin.hpi
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 4 — Artifact Scan
-  # Scans all artifacts in plugin/ — size limit MDSSC_MAX_UPLOAD_MB.
-  # Mirrors Jenkinsfile's Artifact Scan + printFinalSummary.
+  # Scanează .hpi-ul construit cu MDSSC (direct upload).
   # ─────────────────────────────────────────────────────────────────────────────
   artifact-scan:
     name: "4 · Artifact Scan (.hpi)"
@@ -163,10 +240,18 @@ jobs:
       - name: MDSSC Artifact Scan
         id: scan
         env:
-          MDSSC_INSTANCE:       ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY:        ${{ secrets.MDSSC_API_KEY }}
-          MDSSC_API_KEY_HEADER: ${{ secrets.MDSSC_API_KEY_HEADER || 'apikey' }}
-          ARTIFACT_DIR:         plugin
+          MDSSC_INSTANCE:             ${{ secrets.MDSSC_INSTANCE }}
+          MDSSC_API_KEY:              ${{ secrets.MDSSC_API_KEY }}
+          MDSSC_API_KEY_HEADER:       ${{ env.MDSSC_API_KEY_HEADER }}
+          MDSSC_WORKFLOW_ID:          ${{ inputs.workflow_id || secrets.MDSSC_WORKFLOW_ID }}
+          ARTIFACT_DIR:               plugin
+          VULNERABILITY_THRESHOLD:    ${{ env.VULNERABILITY_THRESHOLD }}
+          FAIL_ON_SECRET:             ${{ env.FAIL_ON_SECRET }}
+          FAIL_ON_MALWARE:            ${{ env.FAIL_ON_MALWARE }}
+          MDSSC_SCAN_TIMEOUT:         ${{ env.MDSSC_SCAN_TIMEOUT }}
+          MDSSC_POLL_INTERVAL:        ${{ env.MDSSC_POLL_INTERVAL }}
+          MDSSC_MAX_UPLOAD_MB:        ${{ env.MDSSC_MAX_UPLOAD_MB }}
+          MDSSC_SKIP_LARGE_ARTIFACTS: ${{ env.MDSSC_SKIP_LARGE_ARTIFACTS }}
         run: bash ci/scripts/mdssc-artifact-scan.sh
 
       - name: Upload artifact scan results
@@ -178,19 +263,63 @@ jobs:
           if-no-files-found: ignore
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Stage 5 — E2E Tests (placeholder — Track C tests coming soon)
+  # Stage 5 — E2E Tests
+  # Playwright + mock server MDSSC.
   # ─────────────────────────────────────────────────────────────────────────────
   e2e-tests:
     name: "5 · E2E Tests"
     needs: [build, artifact-scan]
     runs-on: ubuntu-latest
     steps:
-      - name: E2E tests placeholder
-        run: echo "E2E test suite — Track C implementation pending"
+      - uses: actions/checkout@v4
+
+      - name: Download .hpi
+        uses: actions/download-artifact@v4
+        with:
+          name: mdssc-plugin-hpi
+          path: plugin/
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install E2E dependencies
+        run: npm install
+        working-directory: e2e
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: e2e
+
+      - name: Run E2E tests
+        env:
+          MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
+          MDSSC_API_KEY:  ${{ secrets.MDSSC_API_KEY }}
+          HPI_PATH:       ${{ github.workspace }}/plugin/mdssc-plugin.hpi
+          CI:             "true"
+        run: npx playwright test
+        working-directory: e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: e2e/test-results/
+          if-no-files-found: ignore
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 6 — Report + GitHub Pages
-  # Always runs. Deploys docs/ to Pages on main push.
+  # Mereu rulează. Publică pe Pages la push pe main.
   # ─────────────────────────────────────────────────────────────────────────────
   report:
     name: "6 · Report"
@@ -217,7 +346,7 @@ jobs:
           BUILD_STATUS:          ${{ needs.build.result }}
           ARTIFACT_SCAN_STATUS:  ${{ needs.artifact-scan.result }}
           E2E_STATUS:            ${{ needs.e2e-tests.result }}
-          RUN_URL:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_URL:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_SHA: ${{ github.sha }}
           BRANCH:     ${{ github.ref_name }}
           REPO:       ${{ github.repository }}
@@ -241,7 +370,7 @@ jobs:
           path: test-results/pipeline-report.json
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Deploy GitHub Pages (main branch push only)
+  # Deploy GitHub Pages (doar la push pe main)
   # ─────────────────────────────────────────────────────────────────────────────
   deploy-pages:
     name: "Deploy GitHub Pages"
