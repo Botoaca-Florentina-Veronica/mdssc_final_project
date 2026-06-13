@@ -197,7 +197,7 @@
     <h1>MDSSC Jenkins Plugin — CI/CD Pipeline</h1>
     <div class="badge-row">
       <a href="https://github.com/Botoaca-Florentina-Veronica/mdssc_final_project/actions/workflows/cicd.yml" target="_blank">
-        <img src="https://github.com/Botoaca-Florentina-Veronica/mdssc_final_project/actions/workflows/cicd.yml/badge.svg" alt="CI/CD" />
+        <img src="https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white" alt="CI/CD" />
       </a>
     </div>
   </div>
@@ -544,7 +544,8 @@
     // Link MDSSC pentru source scan
     if (report.mdsscInstance && report.sourceScanId) {
       const link = document.getElementById('link-source-scan');
-      link.href = `${report.mdsscInstance}/scans/${report.sourceScanId}`;
+      const repoSegment = report.mdsscRepositoryId ? `${report.mdsscRepositoryId}/` : '';
+      link.href = `${report.mdsscInstance}/reports/${repoSegment}${report.sourceScanId}`;
       link.style.display = 'inline';
     }
 

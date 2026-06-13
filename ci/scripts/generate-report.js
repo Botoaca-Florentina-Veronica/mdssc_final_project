@@ -64,7 +64,8 @@ const overallStatus = Object.values(stages).every(s =>
 // Extrage scan ID-urile din rezultatele MDSSC (câmpul ScanId sau id)
 const sourceScanId  = stages.sourceCodeScan.result?.ScanId  || stages.sourceCodeScan.result?.id  || null;
 const artifactScanId = stages.artifactScan.result?.ScanId   || stages.artifactScan.result?.id    || null;
-const mdsscInstance  = (process.env.MDSSC_INSTANCE || '').replace(/\/$/, '');
+const mdsscInstance    = (process.env.MDSSC_INSTANCE || '').replace(/\/$/, '');
+const mdsscRepositoryId = process.env.MDSSC_REPOSITORY_ID || '';
 
 const report = {
   generatedAt:   new Date().toISOString(),
@@ -74,6 +75,7 @@ const report = {
   repo:    process.env.REPO       || 'unknown',
   runUrl:  process.env.RUN_URL    || '#',
   mdsscInstance,
+  mdsscRepositoryId,
   sourceScanId,
   artifactScanId,
   stages,
