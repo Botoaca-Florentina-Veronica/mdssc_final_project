@@ -232,10 +232,7 @@
           Fail on secret/malware
         </div>
         <span id="status-source-scan" class="stage-status status-skipped">pending</span>
-        <a id="link-source-scan" href="#" target="_blank" rel="noopener"
-           style="display:none;font-size:10px;color:var(--blue);margin-top:2px">
-          📄 View in MDSSC
-        </a>
+        <div id="mdssc-link-container"></div>
       </div>
 
       <div class="arrow">→</div>
@@ -543,10 +540,13 @@
 
     // Link MDSSC pentru source scan
     if (report.mdsscInstance && report.sourceScanId) {
-      const link = document.getElementById('link-source-scan');
       const repoSegment = report.mdsscRepositoryId ? `${report.mdsscRepositoryId}/` : '';
-      link.href = `${report.mdsscInstance}/reports/${repoSegment}${report.sourceScanId}`;
-      link.style.display = 'inline';
+      const mdsscUrl = `${report.mdsscInstance}/reports/${repoSegment}${report.sourceScanId}`;
+      document.getElementById('mdssc-link-container').innerHTML =
+        `<a href="${mdsscUrl}" target="_blank" rel="noopener noreferrer"
+            style="font-size:10px;color:var(--blue);margin-top:2px;display:inline-block">
+           📄 View in MDSSC
+         </a>`;
     }
 
     // Scan summaries

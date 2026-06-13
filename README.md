@@ -137,17 +137,46 @@ Both build steps follow the same internal sequence:
 
 ## Track B — GitHub Actions CI/CD Pipeline
 
-The pipeline in `.github/workflows/cicd.yml` orchestrates the full plugin lifecycle on every push or pull request.
+GitHub Actions is the main orchestrator of this project. The pipeline defined in `.github/workflows/cicd.yml` runs automatically on every `push` and `pull_request`, covering the full lifecycle of the Jenkins plugin — from source code security scanning through build, artifact scanning, end-to-end tests, and final reporting. All stages are connected in a dependency chain; if a security gate fails the pipeline stops, but the Report stage and GitHub Pages deployment always run so the results are always published.
 
 ### Stages
 
 | # | Stage | Description |
 |---|-------|-------------|
-| 1 | **Source Code Scan** | Run MDSSC scan on the plugin source code |
-| 2 | **Build Plugin** | Compile the plugin and produce the `.hpi` artifact |
-| 3 | **Artifact Scan** | Run MDSSC scan on the built `.hpi` file |
-| 4 | **E2E Tests** | Execute the full E2E test suite against the plugin |
-| 5 | **Report** | Publish pipeline status, E2E results, and the full testing report |
+| 1 | **Source Code Scan** | Indirect MDSSC scan — MDSSC pulls the repository from GitHub and analyzes the source code |
+| 2 | **Security Scan** | `npm audit` on the E2E test dependencies (runs in parallel with Stage 1) |
+| 3 | **Build Plugin** | Compile the Jenkins plugin with Maven and produce the `.hpi` artifact |
+| 4 | **Artifact Scan** | Direct MDSSC scan — the `.hpi` file is uploaded to MDSSC for binary analysis |
+| 5 | **E2E Tests** | Full end-to-end test suite against the plugin and a live Jenkins instance |
+| 6 | **Report** | Aggregate results, generate the pipeline report, and publish to GitHub Pages |
+
+### Stage Details
+
+**Stage 1 — Source Code Scan (indirect)**
+
+This is an *indirect* scan: the pipeline does not upload any files to MDSSC. Instead, it sends a `POST /api/v1/scans` request containing the repository branch name and the pre-configured `MDSSC_WORKFLOW_ID`. The workflow stored in MDSSC already holds the connection to the GitHub repository (OAuth credentials, repository URL), so MDSSC connects back to GitHub, pulls the specified branch, and runs its full analysis — detecting vulnerabilities in third-party dependencies, searching for hardcoded secrets, and checking for malware.
+
+The pipeline receives a scan ID in the response field `ScanIds[0]`, then polls `GET /api/v1/scans/{id}/overview` at a configurable interval until the scan status leaves the `Running` state. Once complete, the final result is read from `GET /api/v1/scans/{id}` and the security gate is applied: if the vulnerability severity exceeds the configured threshold, or if secrets or malware are found with the corresponding fail flags enabled, the stage fails and blocks all downstream stages.
+
+**Stage 2 — Security Scan**
+
+Runs `npm audit` on the `e2e/` test dependencies to detect publicly known vulnerabilities in the test toolchain. This stage runs in parallel with Stage 1 so it does not add to the total pipeline wall-clock time.
+
+**Stage 3 — Build Plugin (.hpi)**
+
+After both Stages 1 and 2 pass, Maven builds the Jenkins plugin from source (`mvn package`) and produces `mdssc-plugin.hpi`. If the plugin source is not yet present in the repository (Track A is developed by a separate team member), a minimal placeholder `.hpi` is generated from a stub `MANIFEST.MF` so the rest of the pipeline can still exercise all subsequent stages without blocking on Track A completion.
+
+**Stage 4 — Artifact Scan (direct)**
+
+This is a *direct* scan: the `.hpi` file built in Stage 3 is uploaded as a byte stream to `POST /api/v1/scans/direct`. MDSSC unpacks the archive, inspects the embedded JARs and resources for vulnerabilities, secrets, and malware, and returns a scan ID. The same polling and security gate logic from Stage 1 applies. The resulting scan ID is saved and combined with `MDSSC_INSTANCE` and `REPOSITORY_ID` to generate a deep link to the scan report in the MDSSC dashboard, which is then surfaced in the GitHub Pages deployment.
+
+**Stage 5 — E2E Tests**
+
+Executes the end-to-end test suite from `e2e/`. See [Track C](#track-c--e2e-tests) for the full test plan, including the planned Jenkins integration tests.
+
+**Stage 6 — Report & GitHub Pages**
+
+Always runs regardless of whether earlier stages passed or failed (`if: always()`). `ci/scripts/generate-report.js` collects the outputs of all previous stages — MDSSC scan JSON files, `npm audit` results, E2E test results — and writes a unified `pipeline-report.json`. This file is read at runtime by the GitHub Pages site (`docs/index.html`), which renders a visual pipeline diagram showing the status of each stage, vulnerability counts, and direct links to each MDSSC scan report. The GitHub Pages site is deployed on every push to `main` regardless of pipeline outcome, so results are always visible even after a failure.
 
 ### Pipeline Flow
 
@@ -155,19 +184,22 @@ The pipeline in `.github/workflows/cicd.yml` orchestrates the full plugin lifecy
 on: [push, pull_request]
 
 jobs:
-  source-scan:    # MDSSC source code scan
-  build:          # mvn package / gradle jpi → produces .hpi
-  artifact-scan:  # MDSSC artifact scan on .hpi
-  e2e-tests:      # Plugin E2E test suite
-  report:         # Aggregate and publish results
+  source-scan:    # Stage 1 — indirect MDSSC source code scan
+  security-scan:  # Stage 2 — npm audit (runs in parallel with source-scan)
+  build:          # Stage 3 — mvn package → produces .hpi
+  artifact-scan:  # Stage 4 — direct MDSSC artifact scan on .hpi
+  e2e-tests:      # Stage 5 — plugin E2E test suite
+  report:         # Stage 6 — aggregate results and deploy to GitHub Pages
 ```
 
 ### Required Secrets
 
 | Secret | Purpose |
 |--------|---------|
-| `MDSSC_INSTANCE` | MDSSC server URL |
-| `MDSSC_API_KEY` | MDSSC API key |
+| `MDSSC_INSTANCE` | Base URL of the MDSSC server (e.g. `https://mdssc.example.com`) |
+| `MDSSC_API_KEY` | API key for authenticating with the MDSSC REST API |
+| `MDSSC_WORKFLOW_ID` | MDSSC workflow ID used by both source code and artifact scans |
+| `REPOSITORY_ID` | MDSSC repository ID — used to build deep links to scan reports in the GitHub Pages dashboard |
 
 ---
 
@@ -226,6 +258,26 @@ The test suite lives in `e2e/` and covers all plugin behaviour end-to-end agains
 | Unsupported file type | Build fails with appropriate error |
 | Workflow ID not found | Build fails with `Workflow not found` message |
 | Default workflow used when Workflow ID omitted | Build proceeds using MDSSC default workflow |
+
+---
+
+### Jenkins Integration Tests (planned)
+
+In addition to the API-level tests above, the test suite will include a set of integration tests that install a full Jenkins instance directly on the GitHub Actions Ubuntu runner and validate the plugin end-to-end in a realistic Jenkins environment. The planned implementation follows these steps:
+
+1. **Provision Jenkins** — Download `jenkins.war` and start it on a random local port. The test harness polls the Jenkins health check endpoint (`/login`) until the server is ready to accept connections.
+
+2. **Initial configuration** — Disable the first-run setup wizard, create an admin account, and configure security using the Jenkins CLI (`jenkins-cli.jar`) or the Jenkins REST API (`/securityRealm/createAccountByAdmin`).
+
+3. **Install the plugin** — Upload `mdssc-plugin.hpi` (the artifact produced by Stage 3 of the pipeline) via `POST /pluginManager/uploadPlugin` and trigger a Jenkins restart to activate it.
+
+4. **Create and run a test job** — Create a Freestyle or Pipeline job that includes the plugin's build steps (MDSSC Source Code Scan or MDSSC Artifact Scan) by POSTing a `config.xml` to `/createItem`. Trigger the job via `POST /job/{name}/build` and wait for it to complete by polling `/job/{name}/lastBuild/api/json`.
+
+5. **Assert the outcome** — A test is considered passed or failed as follows:
+   - **Expected success**: the Jenkins build result is `SUCCESS` and the plugin's console log contains the expected MDSSC vulnerability summary with no threshold violations.
+   - **Expected failure**: the Jenkins build result is `FAILURE` and the plugin's console log contains the specific error message corresponding to the injected condition (threshold exceeded, secret detected, malware found, unreachable instance, etc.).
+
+This approach ensures the plugin behaves correctly not only against the MDSSC API in isolation but also when loaded by Jenkins and executed through Jenkins' own build lifecycle, including credential resolution, workspace management, and build-step chaining.
 
 ---
 
