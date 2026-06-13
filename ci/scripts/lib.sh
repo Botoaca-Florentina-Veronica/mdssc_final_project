@@ -206,10 +206,14 @@ mdssc_poll_overview() {
         fi
 
         local status
-        # MDSSC poate folosi oricare din aceste câmpuri
-        status=$(echo "$MDSSC_OVERVIEW" | jq -r \
-            '(.status // .Status // .ScanStatus // .scanStatus // .state // .State) // empty' \
-            2>/dev/null || true)
+        # Extrage starea — identic cu Jenkins _overviewParserScript
+        # (ScanStatus/scanStatus e un obiect nested, nu un string direct)
+        status=$(echo "$MDSSC_OVERVIEW" | jq -r '
+            .ScanningState // .scanningState //
+            (.scanStatus  |  if type=="object" then .scanningState // .ScanningState else . end) //
+            (.ScanStatus  |  if type=="object" then .ScanningState // .scanningState else . end) //
+            .status // .Status // .state // .State // empty
+        ' 2>/dev/null || true)
 
         [[ -z "$status" ]] && status="Running"
         echo "  [${elapsed}s] $status"

@@ -209,13 +209,27 @@ while [[ "$elapsed" -le "${MDSSC_SCAN_TIMEOUT:-900}" ]]; do
             "${BASE_URL}/scans/${SCAN_ID}") || http_code=0
     fi
 
-    # Afișează status curent
+    # Debug: afișează răspunsul brut la primul poll pentru a vedea structura
+    if [[ "$elapsed" -eq 0 ]]; then
+        echo "[MDSSC] DEBUG overview response:"
+        cat /tmp/mdssc-overview.json 2>/dev/null || true
+        echo ""
+    fi
+
+    # Afișează status curent (identic cu Jenkins _overviewParserScript)
     node -e "
         const d = JSON.parse(require('fs').readFileSync('/tmp/mdssc-overview.json','utf8'));
-        const state    = d.ScanningState||d.scanningState||d.status||d.Status||'Unknown';
+        const state =
+            d.ScanningState || d.scanningState ||
+            (d.scanStatus  && d.scanStatus.scanningState)  ||
+            (d.ScanStatus  && d.ScanStatus.ScanningState)  ||
+            d.status || d.Status || 'Unknown';
         const progress = d.ScanProgress!=null?d.ScanProgress:(d.scanProgress!=null?d.scanProgress:'?');
-        const c=+(d.critical||d.Critical||0), h=+(d.high||d.High||0);
-        const m=+(d.medium||d.Medium||0),     l=+(d.low||d.Low||0);
+        const iss = d.vulnerabilityIssues || d.VulnerabilityIssues || d;
+        const c=+(iss.critical||iss.Critical||d.critical||d.Critical||0);
+        const h=+(iss.high    ||iss.High    ||d.high    ||d.High    ||0);
+        const m=+(iss.medium  ||iss.Medium  ||d.medium  ||d.Medium  ||0);
+        const l=+(iss.low     ||iss.Low     ||d.low     ||d.Low     ||0);
         const mal=+(d.Malware||d.malware||0);
         const sec=+(d.Secret||d.secret||d.Secrets||d.secrets||0);
         console.log('[${elapsed}s] '+state+' ('+progress+'%) | C:'+c+' H:'+h+' M:'+m+' L:'+l+' | Malware:'+mal+' Secrets:'+sec);
@@ -223,7 +237,12 @@ while [[ "$elapsed" -le "${MDSSC_SCAN_TIMEOUT:-900}" ]]; do
 
     FINAL_STATE=$(node -e "
         const d = JSON.parse(require('fs').readFileSync('/tmp/mdssc-overview.json','utf8'));
-        process.stdout.write(d.ScanningState||d.scanningState||d.status||d.Status||'Unknown');
+        const state =
+            d.ScanningState || d.scanningState ||
+            (d.scanStatus  && d.scanStatus.scanningState)  ||
+            (d.ScanStatus  && d.ScanStatus.ScanningState)  ||
+            d.status || d.Status || 'Unknown';
+        process.stdout.write(String(state));
     " 2>/dev/null || echo "Unknown")
 
     NORMALIZED=$(echo "$FINAL_STATE" | tr '[:upper:]' '[:lower:]')
