@@ -196,10 +196,9 @@
   <div>
     <h1>MDSSC Jenkins Plugin — CI/CD Pipeline</h1>
     <div class="badge-row">
-      <a href="https://github.com/ioanamhl/mdssc_project/actions/workflows/cicd.yml" target="_blank">
-        <img src="https://github.com/ioanamhl/mdssc_project/actions/workflows/cicd.yml/badge.svg" alt="CI/CD" />
+      <a href="https://github.com/Botoaca-Florentina-Veronica/mdssc_final_project/actions/workflows/cicd.yml" target="_blank">
+        <img src="https://github.com/Botoaca-Florentina-Veronica/mdssc_final_project/actions/workflows/cicd.yml/badge.svg" alt="CI/CD" />
       </a>
-      <span style="color:var(--muted);font-size:12px">Track B + C · GitHub Actions</span>
     </div>
   </div>
 </header>
@@ -233,6 +232,10 @@
           Fail on secret/malware
         </div>
         <span id="status-source-scan" class="stage-status status-skipped">pending</span>
+        <a id="link-source-scan" href="#" target="_blank" rel="noopener"
+           style="display:none;font-size:10px;color:var(--blue);margin-top:2px">
+          📄 View in MDSSC
+        </a>
       </div>
 
       <div class="arrow">→</div>
@@ -454,8 +457,8 @@
 </main>
 
 <footer>
-  MDSSC Jenkins Plugin · University Project · Track B &amp; C by Vera ·
-  <a href="https://github.com/ioanamhl/mdssc_project" target="_blank">GitHub Repository</a>
+  MDSSC Jenkins Plugin · University Project ·
+  <a href="https://github.com/Botoaca-Florentina-Veronica/mdssc_final_project" target="_blank">GitHub Repository</a>
 </footer>
 
 <script>
@@ -537,6 +540,13 @@
     applyStatus('status-build',        'tbl-build',        s.build?.status);
     applyStatus('status-artifact-scan','tbl-artifact-scan',s.artifactScan?.status);
     applyStatus('status-e2e-tests',    'tbl-e2e-tests',    s.e2eTests?.status);
+
+    // Link MDSSC pentru source scan
+    if (report.mdsscInstance && report.sourceScanId) {
+      const link = document.getElementById('link-source-scan');
+      link.href = `${report.mdsscInstance}/scans/${report.sourceScanId}`;
+      link.style.display = 'inline';
+    }
 
     // Scan summaries
     const scanHTML = [

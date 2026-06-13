@@ -350,6 +350,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           BRANCH:     ${{ github.ref_name }}
           REPO:       ${{ github.repository }}
+          MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
         run: node ci/scripts/generate-report.js
 
       - name: Copy report into docs site
