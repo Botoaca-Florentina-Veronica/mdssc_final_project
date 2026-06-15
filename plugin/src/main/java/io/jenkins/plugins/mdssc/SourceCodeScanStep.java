@@ -17,6 +17,7 @@ import io.jenkins.plugins.mdssc.model.ScanResult;
 import jenkins.model.Jenkins;
 import jenkins.tasks.SimpleBuildStep;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
+import hudson.security.ACL;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
@@ -184,6 +185,16 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
         @Override
         public String getDisplayName() {
             return "MDSSC — Source Code Scan";
+        }
+
+        public ListBoxModel doFillCredentialsIdItems() {
+            return new StandardListBoxModel()
+                    .withEmptySelection()
+                    .withAll(CredentialsProvider.lookupCredentials(
+                            StringCredentials.class,
+                            Jenkins.get(),
+                            ACL.SYSTEM,
+                            Collections.emptyList()));
         }
 
         public ListBoxModel doFillVulnerabilityThresholdItems() {

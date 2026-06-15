@@ -182,12 +182,13 @@ public class MdsscApiClient {
         if (code < 200 || code >= 300)
             throw new IOException("[MDSSC] Poll failed HTTP " + code);
         String body = readBody(conn);
-        if (firstPoll) {
-            log.printf("[MDSSC] DEBUG overview response: %s%n",
-                    body.length() > 500 ? body.substring(0, 500) + "..." : body);
+        ScanResult result = ScanResult.fromJson(MAPPER.readTree(body));
+        if (firstPoll || result.isDone()) {
+            log.printf("[MDSSC] DEBUG overview JSON: %s%n",
+                    body.length() > 2000 ? body.substring(0, 2000) + "..." : body);
             firstPoll = false;
         }
-        return ScanResult.fromJson(MAPPER.readTree(body));
+        return result;
     }
 
     public ScanResult fetchFullResult(String scanId, PrintStream log) throws Exception {

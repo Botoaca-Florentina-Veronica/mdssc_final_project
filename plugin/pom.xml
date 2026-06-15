@@ -42,6 +42,24 @@
     </dependency>
   </dependencies>
 
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>com.cloudbees.maven.license</groupId>
+          <artifactId>license-maven-plugin</artifactId>
+          <version>104.v2171757ee6dd</version>
+          <executions>
+            <execution>
+              <id>default</id>
+              <phase>none</phase>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
   <repositories>
     <repository>
       <id>repo.jenkins-ci.org</id>

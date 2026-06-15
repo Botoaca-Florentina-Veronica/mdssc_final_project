@@ -21,16 +21,37 @@ public class ScanResult {
         r.state = extractState(data);
         r.progress = textOf(data, "ScanProgress", "scanProgress", "progress");
 
-        JsonNode iss = firstOf(data, "vulnerabilityIssues", "VulnerabilityIssues");
-        JsonNode src = (iss != null) ? iss : data;
-        r.critical = intOf(src, "critical", "Critical");
-        r.high = intOf(src, "high", "High");
-        r.medium = intOf(src, "medium", "Medium", "moderate", "Moderate");
-        r.low = intOf(src, "low", "Low");
+        // MDSSC API structure: ScanInformation.VulnerabilityIssues.{critical,high,medium,low}
+        JsonNode scanInfo = firstOf(data, "ScanInformation", "scanInformation");
+        JsonNode vulnNode = null;
+        if (scanInfo != null) {
+            vulnNode = firstOf(scanInfo, "VulnerabilityIssues", "vulnerabilityIssues");
+        }
+        // Fallback: VulnerabilityIssues at root level
+        if (vulnNode == null) {
+            vulnNode = firstOf(data, "VulnerabilityIssues", "vulnerabilityIssues",
+                    "vulnerabilityStatus", "VulnerabilityStatus",
+                    "vulnerabilities", "Vulnerabilities");
+        }
+        JsonNode src = (vulnNode != null) ? vulnNode : data;
 
-        r.malware = intOf(data, "Malware", "malware");
-        r.secrets = intOf(data, "Secret", "secret", "Secrets", "secrets");
-        r.blockedLicenses = intOf(data, "BlockedLicensesCount", "blockedLicensesCount");
+        r.critical = intOf(src, "critical", "Critical");
+        r.high     = intOf(src, "high",     "High");
+        r.medium   = intOf(src, "medium",   "Medium", "moderate", "Moderate");
+        r.low      = intOf(src, "low",      "Low");
+
+        // Malware / Secret are booleans in ScanInformation
+        if (scanInfo != null) {
+            r.malware = boolOf(scanInfo, "Malware", "malware") ? 1 : 0;
+            r.secrets = boolOf(scanInfo, "Secret",  "secret", "Secrets", "secrets") ? 1 : 0;
+            JsonNode lic = firstOf(scanInfo, "Licenses", "licenses");
+            if (lic != null)
+                r.blockedLicenses = intOf(lic, "BlockedLicensesCount", "blockedLicensesCount");
+        } else {
+            r.malware         = intOf(data, "Malware", "malware");
+            r.secrets         = intOf(data, "Secret",  "secret", "Secrets", "secrets");
+            r.blockedLicenses = intOf(data, "BlockedLicensesCount", "blockedLicensesCount");
+        }
         return r;
     }
 
@@ -115,6 +136,13 @@ public class ScanResult {
             if (n != null && n.has(k) && !n.get(k).isNull())
                 return n.get(k).asInt(0);
         return 0;
+    }
+
+    private static boolean boolOf(JsonNode n, String... keys) {
+        for (String k : keys)
+            if (n != null && n.has(k) && !n.get(k).isNull())
+                return n.get(k).asBoolean(false);
+        return false;
     }
 
     private static JsonNode firstOf(JsonNode n, String... keys) {

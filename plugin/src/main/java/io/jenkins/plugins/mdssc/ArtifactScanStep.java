@@ -1,21 +1,26 @@
 package io.jenkins.plugins.mdssc;
 
 import com.cloudbees.plugins.credentials.CredentialsProvider;
+import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import hudson.EnvVars;
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.*;
+import hudson.security.ACL;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import io.jenkins.plugins.mdssc.model.ScanResult;
 import io.jenkins.plugins.mdssc.model.VulnerabilityThreshold;
+import jenkins.model.Jenkins;
 import jenkins.tasks.SimpleBuildStep;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
+
+import java.util.Collections;
 
 import java.io.*;
 
@@ -186,6 +191,16 @@ public class ArtifactScanStep extends Builder implements SimpleBuildStep {
         @Override
         public String getDisplayName() {
             return "MDSSC — Artifact Scan";
+        }
+
+        public ListBoxModel doFillCredentialsIdItems() {
+            return new StandardListBoxModel()
+                    .withEmptySelection()
+                    .withAll(CredentialsProvider.lookupCredentials(
+                            StringCredentials.class,
+                            Jenkins.get(),
+                            ACL.SYSTEM,
+                            Collections.emptyList()));
         }
 
         public ListBoxModel doFillVulnerabilityThresholdItems() {
