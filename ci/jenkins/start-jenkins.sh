@@ -27,6 +27,7 @@ JENKINS_URL="http://localhost:${JENKINS_PORT}"
 JENKINS_USER="admin"
 JENKINS_PASS="admin123"
 CONTAINER="jenkins-mdssc-$$"
+COOKIE_JAR=$(mktemp /tmp/jenkins-cookies-XXXXXX.txt)
 
 mkdir -p "$LOG_DIR"
 
@@ -38,6 +39,7 @@ cleanup() {
     echo "[jenkins-test] Oprire container ${CONTAINER}..."
     docker stop "$CONTAINER" 2>/dev/null || true
     docker rm   "$CONTAINER" 2>/dev/null || true
+    rm -f "$COOKIE_JAR"
 }
 trap cleanup EXIT
 
@@ -52,9 +54,9 @@ echo "=========================================="
 [[ -n "${MDSSC_INSTANCE:-}" ]] || { echo "ERROR: MDSSC_INSTANCE nu este setat"; exit 1; }
 [[ -n "${MDSSC_API_KEY:-}" ]]  || { echo "ERROR: MDSSC_API_KEY nu este setat"; exit 1; }
 
-# ── Helper: curl cu autentificare Jenkins ─────────────────────────────────────
+# ── Helper: curl cu autentificare Jenkins + cookie jar (necesar pentru CSRF) ──
 jcurl() {
-    curl -sf -u "${JENKINS_USER}:${JENKINS_PASS}" "$@"
+    curl -sf -u "${JENKINS_USER}:${JENKINS_PASS}" -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$@"
 }
 
 # ── Helper: așteptare Jenkins ready ──────────────────────────────────────────
@@ -189,6 +191,7 @@ echo "[jenkins-test] XML generat ($(wc -c < "$TMP_JOB_XML") bytes)"
 HTTP_CODE=$(curl -s -w '%{http_code}' -o /tmp/mdssc-create-resp.txt \
     -X POST "${JENKINS_URL}/createItem?name=mdssc-plugin-test" \
     -u "${JENKINS_USER}:${JENKINS_PASS}" \
+    -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
     "${CRUMB_ARGS[@]}" \
     -H "Content-Type: application/xml" \
     --data-binary "@${TMP_JOB_XML}" 2>/dev/null)
@@ -209,6 +212,7 @@ echo "[jenkins-test] Pornire build..."
 BUILD_HTTP=$(curl -s -w '%{http_code}' -o /dev/null \
     -X POST "${JENKINS_URL}/job/mdssc-plugin-test/build" \
     -u "${JENKINS_USER}:${JENKINS_PASS}" \
+    -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
     "${CRUMB_ARGS[@]}" 2>/dev/null)
 echo "[jenkins-test] build trigger → HTTP ${BUILD_HTTP}"
 [[ "$BUILD_HTTP" -ge 200 && "$BUILD_HTTP" -lt 300 ]] || \
