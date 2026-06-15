@@ -277,37 +277,66 @@ mdssc_export_reports() {
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_evaluate() {
     local label="${1:-Scan}"
-    local result="${MDSSC_SCAN_RESULT:-{}}"
+    local result="${MDSSC_SCAN_RESULT:-}"
 
-    # Validare JSON — dacă e malformat, tratăm ca scan curat și continuăm
+    # Dacă MDSSC_SCAN_RESULT e invalid, folosi MDSSC_OVERVIEW ca fallback
     if ! echo "$result" | jq '.' > /dev/null 2>&1; then
-        echo "::warning::$label — rezultat JSON invalid sau incomplet, tratez ca scan curat"
-        echo "passed=true" >> "$GITHUB_OUTPUT"
-        return 0
+        echo "::warning::$label — MDSSC_SCAN_RESULT invalid, folosesc MDSSC_OVERVIEW"
+        result="${MDSSC_OVERVIEW:-}"
+    fi
+    if ! echo "$result" | jq '.' > /dev/null 2>&1; then
+        result="{}"
     fi
 
-    local critical high medium low unknown secrets malware
-    # Câmpuri reale MDSSC: VulnerabilityIssues.{critical,...}, FilesWithSecrets, InfectedFiles
-    critical=$(echo "$result" | jq -r '(.VulnerabilityIssues.critical // .summary.critical // .Summary.Critical) // 0' 2>/dev/null || echo 0)
-    high=$(echo "$result"     | jq -r '(.VulnerabilityIssues.high     // .summary.high     // .Summary.High)     // 0' 2>/dev/null || echo 0)
-    medium=$(echo "$result"   | jq -r '(.VulnerabilityIssues.medium   // .summary.medium   // .Summary.Medium)   // 0' 2>/dev/null || echo 0)
-    low=$(echo "$result"      | jq -r '(.VulnerabilityIssues.low      // .summary.low      // .Summary.Low)      // 0' 2>/dev/null || echo 0)
-    unknown=$(echo "$result"  | jq -r '(.VulnerabilityIssues.unknown  // .summary.unknown  // .Summary.Unknown)  // 0' 2>/dev/null || echo 0)
-    secrets=$(echo "$result"  | jq -r '(.FilesWithSecrets // .secrets // .Secrets)         // 0' 2>/dev/null || echo 0)
-    malware=$(echo "$result"  | jq -r '(.InfectedFiles    // .malware // .Malware)         // 0' 2>/dev/null || echo 0)
+    local critical high medium low unknown secrets malware blocked_licenses
+    # MDSSC API: ScanInformation.VulnerabilityIssues.{critical,high,medium,low,unknown}
+    critical=$(echo "$result" | jq -r '
+        (.ScanInformation.VulnerabilityIssues.critical //
+         .VulnerabilityIssues.critical // .summary.critical // 0)' 2>/dev/null || echo 0)
+    high=$(echo "$result" | jq -r '
+        (.ScanInformation.VulnerabilityIssues.high //
+         .VulnerabilityIssues.high // .summary.high // 0)' 2>/dev/null || echo 0)
+    medium=$(echo "$result" | jq -r '
+        (.ScanInformation.VulnerabilityIssues.medium //
+         .VulnerabilityIssues.medium // .summary.medium // 0)' 2>/dev/null || echo 0)
+    low=$(echo "$result" | jq -r '
+        (.ScanInformation.VulnerabilityIssues.low //
+         .VulnerabilityIssues.low // .summary.low // 0)' 2>/dev/null || echo 0)
+    unknown=$(echo "$result" | jq -r '
+        (.ScanInformation.VulnerabilityIssues.unknown //
+         .VulnerabilityIssues.unknown // .summary.unknown // 0)' 2>/dev/null || echo 0)
+
+    # Malware/Secret sunt boolean în ScanInformation
+    local malware_raw secrets_raw
+    malware_raw=$(echo "$result" | jq -r '.ScanInformation.Malware // false' 2>/dev/null || echo false)
+    secrets_raw=$(echo "$result" | jq -r '.ScanInformation.Secret  // false' 2>/dev/null || echo false)
+    malware=$([[ "$malware_raw" == "true" ]] && echo 1 || echo 0)
+    secrets=$([[ "$secrets_raw" == "true" ]] && echo 1 || echo 0)
+    # Fallback la câmpuri int dacă boolean nu există
+    [[ $malware -eq 0 ]] && malware=$(echo "$result" | jq -r '(.InfectedFiles // .malware // 0)' 2>/dev/null || echo 0)
+    [[ $secrets -eq 0 ]] && secrets=$(echo "$result" | jq -r '(.FilesWithSecrets // .secrets // 0)' 2>/dev/null || echo 0)
+
+    blocked_licenses=$(echo "$result" | jq -r '
+        (.ScanInformation.Licenses.BlockedLicensesCount //
+         .BlockedLicensesCount // 0)' 2>/dev/null || echo 0)
 
     echo ""
     echo "=========================================="
     echo "   $label — RAPORT FINAL"
     echo "=========================================="
-    echo "  Critical : $critical"
-    echo "  High     : $high"
-    echo "  Medium   : $medium"
-    echo "  Low      : $low"
-    echo "  Unknown  : $unknown"
-    echo "  Secrets  : $secrets"
-    echo "  Malware  : $malware"
-    echo "  Threshold: $VULNERABILITY_THRESHOLD"
+    echo "  VULNERABILITIES:"
+    echo "  Critical         : $critical"
+    echo "  High             : $high"
+    echo "  Medium           : $medium"
+    echo "  Low              : $low"
+    echo "  Unknown          : $unknown"
+    echo "------------------------------------------"
+    echo "  OTHER FINDINGS:"
+    echo "  Secrets          : $secrets"
+    echo "  Malware          : $malware"
+    echo "  Blocked Licenses : $blocked_licenses"
+    echo "------------------------------------------"
+    echo "  Threshold        : $VULNERABILITY_THRESHOLD"
     echo "=========================================="
 
     local failed=false
