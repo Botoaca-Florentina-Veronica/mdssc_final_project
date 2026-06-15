@@ -171,6 +171,8 @@ public class MdsscApiClient {
         return extractScanId(MAPPER.readTree(resp), log);
     }
 
+    private boolean firstPoll = true;
+
     public ScanResult pollOverview(String scanId, PrintStream log) throws Exception {
         HttpURLConnection conn = openGet(baseUrl + "/scans/" + scanId + "/overview");
         int code = conn.getResponseCode();
@@ -179,7 +181,13 @@ public class MdsscApiClient {
         code = conn.getResponseCode();
         if (code < 200 || code >= 300)
             throw new IOException("[MDSSC] Poll failed HTTP " + code);
-        return ScanResult.fromJson(MAPPER.readTree(readBody(conn)));
+        String body = readBody(conn);
+        if (firstPoll) {
+            log.printf("[MDSSC] DEBUG overview response: %s%n",
+                    body.length() > 500 ? body.substring(0, 500) + "..." : body);
+            firstPoll = false;
+        }
+        return ScanResult.fromJson(MAPPER.readTree(body));
     }
 
     public ScanResult fetchFullResult(String scanId, PrintStream log) throws Exception {

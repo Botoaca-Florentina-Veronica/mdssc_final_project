@@ -18,7 +18,7 @@ public class ScanResult {
 
     public static ScanResult fromJson(JsonNode data) {
         ScanResult r = new ScanResult();
-        r.state = textOf(data, "ScanningState", "scanningState", "status", "Status", "state");
+        r.state = extractState(data);
         r.progress = textOf(data, "ScanProgress", "scanProgress", "progress");
 
         JsonNode iss = firstOf(data, "vulnerabilityIssues", "VulnerabilityIssues");
@@ -76,6 +76,31 @@ public class ScanResult {
 
     public int getBlockedLicenses() {
         return blockedLicenses;
+    }
+
+    // Identic cu Jenkins mdsscAdvanced.groovy — caută și în obiectul nested scanStatus
+    private static String extractState(JsonNode data) {
+        // 1. Câmpuri top-level
+        for (String k : new String[]{"ScanningState", "scanningState"}) {
+            if (data != null && data.has(k) && data.get(k).isTextual())
+                return data.get(k).asText();
+        }
+        // 2. Obiect nested: scanStatus.scanningState / ScanStatus.ScanningState
+        for (String outer : new String[]{"scanStatus", "ScanStatus"}) {
+            JsonNode ss = data != null ? data.path(outer) : null;
+            if (ss != null && !ss.isMissingNode() && ss.isObject()) {
+                for (String inner : new String[]{"scanningState", "ScanningState"}) {
+                    if (ss.has(inner) && ss.get(inner).isTextual())
+                        return ss.get(inner).asText();
+                }
+            }
+        }
+        // 3. Fallback generic
+        for (String k : new String[]{"status", "Status", "state", "State"}) {
+            if (data != null && data.has(k) && data.get(k).isTextual())
+                return data.get(k).asText();
+        }
+        return null;
     }
 
     private static String textOf(JsonNode n, String... keys) {
