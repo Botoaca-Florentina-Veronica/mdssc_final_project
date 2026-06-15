@@ -150,10 +150,14 @@ echo "$PLUGIN_INFO"
 echo ""
 echo "[6/7] Creare job pipeline 'mdssc-plugin-test'..."
 
-# Obține CSRF crumb
+# Obține CSRF crumb și construiește array de argumente curl
 CRUMB=$(jcurl "${JENKINS_URL}/crumbIssuer/api/json" 2>/dev/null | \
     python3 -c "import sys,json; print(json.load(sys.stdin).get('crumb',''))" 2>/dev/null || echo "")
 echo "[jenkins-test] CSRF crumb: ${CRUMB:-(none)}"
+
+# Array bash — singura metodă corectă pentru argumente opționale cu spații
+CRUMB_ARGS=()
+[[ -n "$CRUMB" ]] && CRUMB_ARGS=(-H "Jenkins-Crumb: ${CRUMB}")
 
 # Generează XML job cu Jenkinsfile.test embedded (Python face XML escaping corect)
 TMP_JOB_XML=$(mktemp /tmp/mdssc-job-XXXXXX.xml)
@@ -179,17 +183,22 @@ xml = '''<?xml version="1.1" encoding="UTF-8"?>
 print(xml)
 PYEOF
 
-# POST job config
-HTTP_CODE=$(curl -sf -w '%{http_code}' -o /dev/null \
+echo "[jenkins-test] XML generat ($(wc -c < "$TMP_JOB_XML") bytes)"
+
+# POST job config — fără -f ca să capturăm codul HTTP real (nu 0)
+HTTP_CODE=$(curl -s -w '%{http_code}' -o /tmp/mdssc-create-resp.txt \
     -X POST "${JENKINS_URL}/createItem?name=mdssc-plugin-test" \
     -u "${JENKINS_USER}:${JENKINS_PASS}" \
-    ${CRUMB:+-H "Jenkins-Crumb: ${CRUMB}"} \
+    "${CRUMB_ARGS[@]}" \
     -H "Content-Type: application/xml" \
-    --data-binary "@${TMP_JOB_XML}" 2>/dev/null) || HTTP_CODE=0
+    --data-binary "@${TMP_JOB_XML}" 2>/dev/null)
 rm -f "$TMP_JOB_XML"
 
+echo "[jenkins-test] createItem → HTTP ${HTTP_CODE}"
+[[ -s /tmp/mdssc-create-resp.txt ]] && cat /tmp/mdssc-create-resp.txt && echo ""
+
 if [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
-    echo "[jenkins-test] Job creat (HTTP ${HTTP_CODE})"
+    echo "[jenkins-test] Job creat cu succes"
 else
     echo "ERROR: Nu s-a putut crea job-ul — HTTP ${HTTP_CODE}"
     exit 1
@@ -197,10 +206,13 @@ fi
 
 # Pornire build
 echo "[jenkins-test] Pornire build..."
-curl -sf -X POST "${JENKINS_URL}/job/mdssc-plugin-test/build" \
+BUILD_HTTP=$(curl -s -w '%{http_code}' -o /dev/null \
+    -X POST "${JENKINS_URL}/job/mdssc-plugin-test/build" \
     -u "${JENKINS_USER}:${JENKINS_PASS}" \
-    ${CRUMB:+-H "Jenkins-Crumb: ${CRUMB}"} \
-    -o /dev/null || { echo "ERROR: Nu s-a putut porni build-ul"; exit 1; }
+    "${CRUMB_ARGS[@]}" 2>/dev/null)
+echo "[jenkins-test] build trigger → HTTP ${BUILD_HTTP}"
+[[ "$BUILD_HTTP" -ge 200 && "$BUILD_HTTP" -lt 300 ]] || \
+    { echo "ERROR: Nu s-a putut porni build-ul — HTTP ${BUILD_HTTP}"; exit 1; }
 
 echo "[jenkins-test] Build pornit. Polling rezultat..."
 
