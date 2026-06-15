@@ -39,6 +39,11 @@ const stages = {
     status: process.env.ARTIFACT_SCAN_STATUS || 'skipped',
     result: readJson(path.join(ARTIFACTS, 'artifact-scan-results', 'artifact-scan.json')),
   },
+  pluginTest: {
+    label: 'Plugin Integration Test',
+    status: process.env.PLUGIN_TEST_STATUS || 'skipped',
+    result: null,
+  },
   e2eTests: {
     label: 'E2E Tests',
     status: process.env.E2E_STATUS || 'skipped',

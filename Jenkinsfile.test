@@ -1,0 +1,88 @@
+// MDSSC Plugin Integration Test
+// Rulat automat de ci/jenkins/start-jenkins.sh într-o instanță Jenkins Docker temporară.
+//
+// Testează:
+//   1. Sanity check — credențiale și env vars configurate corect
+//   2. SourceCodeScanStep — scan indirect repo GitHub prin MDSSC
+//   3. ArtifactScanStep  — scan direct fișier .hpi prin MDSSC
+//
+// Dacă oricare stage eșuează → build FAILURE → start-jenkins.sh returnează exit 1
+
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+
+    stages {
+        stage('Sanity Check') {
+            steps {
+                script {
+                    def instanceUrl = env.MDSSC_INSTANCE_URL
+                    if (!instanceUrl || instanceUrl.trim().isEmpty()) {
+                        error('MDSSC_INSTANCE_URL nu este configurat — verifică jenkins.yaml și variabilele de mediu Docker')
+                    }
+                    echo "MDSSC Instance: ${instanceUrl}"
+                    echo "Credențial ID : mdssc-api-key"
+                    echo "Plugin version: verificat la runtime prin scan steps"
+                }
+            }
+        }
+
+        stage('Source Code Scan') {
+            steps {
+                echo 'Pornire SourceCodeScanStep (scan indirect — MDSSC trage din GitHub)...'
+                step([$class: 'io.jenkins.plugins.mdssc.SourceCodeScanStep',
+                    mdsscInstance         : env.MDSSC_INSTANCE_URL,
+                    credentialsId         : 'mdssc-api-key',
+                    branch                : 'main',
+                    workflowId            : '',
+                    connectionId          : '',
+                    repository            : '',
+                    vulnerabilityThreshold: 'none',
+                    failOnSecret          : false,
+                    failOnMalware         : false,
+                    scanTimeout           : 600,
+                    pollInterval          : 10
+                ])
+            }
+        }
+
+        stage('Artifact Scan') {
+            steps {
+                echo 'Pregătire fișier .hpi pentru artifact scan...'
+                sh 'cp /tmp/mdssc-scanner.hpi mdssc-scanner.hpi'
+                echo 'Pornire ArtifactScanStep (scan direct upload .hpi)...'
+                step([$class: 'io.jenkins.plugins.mdssc.ArtifactScanStep',
+                    mdsscInstance         : env.MDSSC_INSTANCE_URL,
+                    credentialsId         : 'mdssc-api-key',
+                    filePath              : 'mdssc-scanner.hpi',
+                    workflowId            : '',
+                    vulnerabilityThreshold: 'none',
+                    failOnSecret          : false,
+                    failOnMalware         : false,
+                    scanTimeout           : 600,
+                    pollInterval          : 10,
+                    maxFileSizeMb         : 100
+                ])
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '=========================================='
+            echo '  MDSSC PLUGIN TEST: PASSED'
+            echo '  Source scan + Artifact scan OK.'
+            echo '=========================================='
+        }
+        failure {
+            echo '=========================================='
+            echo '  MDSSC PLUGIN TEST: FAILED'
+            echo '  Verifică console output de mai sus.'
+            echo '=========================================='
+        }
+    }
+}

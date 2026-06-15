@@ -1,0 +1,29 @@
+# JCasC — Jenkins Configuration as Code
+# Aplicat automat la startup via CASC_JENKINS_CONFIG env var.
+# ${MDSSC_INSTANCE} și ${MDSSC_API_KEY} vin din variabilele de mediu ale containerului.
+
+jenkins:
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin123"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "MDSSC_INSTANCE_URL"
+            value: "${MDSSC_INSTANCE}"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "mdssc-api-key"
+              secret: "${MDSSC_API_KEY}"
+              description: "MDSSC API Key (Secret Text)"

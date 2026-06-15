@@ -263,11 +263,56 @@ jobs:
           if-no-files-found: ignore
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Stage 5 — E2E Tests
+  # Stage 5 — Plugin Integration Test (Jenkins Docker)
+  # Pornește o instanță Jenkins reală în Docker, instalează .hpi-ul construit,
+  # rulează Jenkinsfile.test cu scan real la MDSSC.
+  # Rulează în paralel cu E2E Tests (ambele după artifact-scan).
+  # ─────────────────────────────────────────────────────────────────────────────
+  plugin-test:
+    name: "5 · Plugin Integration Test (Jenkins)"
+    needs: artifact-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      passed: ${{ steps.test.outputs.passed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download .hpi
+        uses: actions/download-artifact@v4
+        with:
+          name: mdssc-plugin-hpi
+          path: plugin-out/
+
+      - name: Run Jenkins plugin integration test
+        id: test
+        env:
+          MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
+          MDSSC_API_KEY:  ${{ secrets.MDSSC_API_KEY }}
+          HPI_FILE:       ${{ github.workspace }}/plugin-out/mdssc-plugin.hpi
+        run: |
+          bash ci/jenkins/start-jenkins.sh
+          echo "passed=true" >> $GITHUB_OUTPUT
+
+      - name: Set passed=false on failure
+        if: failure()
+        run: echo "passed=false" >> $GITHUB_OUTPUT
+
+      - name: Upload Jenkins test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jenkins-test-logs
+          path: jenkins-test-logs/
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Stage 6 — E2E Tests
   # Playwright + mock server MDSSC.
+  # Rulează în paralel cu Plugin Integration Test.
   # ─────────────────────────────────────────────────────────────────────────────
   e2e-tests:
-    name: "5 · E2E Tests"
+    name: "6 · E2E Tests"
     needs: [build, artifact-scan]
     runs-on: ubuntu-latest
     steps:
@@ -318,12 +363,12 @@ jobs:
           if-no-files-found: ignore
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Stage 6 — Report + GitHub Pages
+  # Stage 7 — Report + GitHub Pages
   # Mereu rulează. Publică pe Pages la push pe main.
   # ─────────────────────────────────────────────────────────────────────────────
   report:
-    name: "6 · Report"
-    needs: [source-scan, security-scan, build, artifact-scan, e2e-tests]
+    name: "7 · Report"
+    needs: [source-scan, security-scan, build, artifact-scan, plugin-test, e2e-tests]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -345,6 +390,7 @@ jobs:
           SECURITY_SCAN_STATUS:  ${{ needs.security-scan.result }}
           BUILD_STATUS:          ${{ needs.build.result }}
           ARTIFACT_SCAN_STATUS:  ${{ needs.artifact-scan.result }}
+          PLUGIN_TEST_STATUS:    ${{ needs.plugin-test.result }}
           E2E_STATUS:            ${{ needs.e2e-tests.result }}
           RUN_URL:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_SHA: ${{ github.sha }}
