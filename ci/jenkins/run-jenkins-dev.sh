@@ -65,8 +65,11 @@ docker run -d \
     -e "MDSSC_API_KEY=${MDSSC_API_KEY:-}" \
     -v "${SCRIPT_DIR}/jenkins.yaml:/var/casc/jenkins.yaml:ro" \
     -v "${SCRIPT_DIR}/plugins.txt:/tmp/plugins.txt:ro" \
-    -v "${HPI_FILE}:/tmp/mdssc-scanner.hpi:ro" \
     jenkins/jenkins:lts-jdk17
+
+# Copiere HPI cu docker cp (evită problemele de path Windows cu volume mounts)
+sleep 3
+docker cp "${HPI_FILE}" "${CONTAINER}:/tmp/mdssc-scanner.hpi"
 
 # ── 2. Instalare dependențe ───────────────────────────────────────────────────
 echo "[2/4] Instalare dependențe plugin..."

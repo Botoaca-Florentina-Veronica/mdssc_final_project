@@ -1,0 +1,198 @@
+// ============================================================
+// MDSSC Pipeline — Jenkinsfile (self-contained)
+//
+// Stages:
+//   1. Checkout      — clone repo + info build
+//   2. Check Health  — verifică conexiunea la serverul MDSSC
+//   3. Security Scan — npm audit + ESLint (doar dacă există package.json)
+//   4. Build         — build proiect (adaptat la stack)
+//   5. Deploy        — deploy (dezactivat implicit)
+//
+// Necesită în Jenkins UI:
+//   - Credențial "mdssc-api-key" (Secret Text) cu MDSSC API key
+//   - Variabila de mediu MDSSC_INSTANCE_URL (Manage Jenkins → System)
+// ============================================================
+
+// ── MDSSC Check Health (inlineat din mdsscAdvanced.groovy) ──────────────────
+
+String mdssc_apiBaseUrl(String server) {
+    String s = server.replaceAll('/+$', '')
+    if (s.endsWith('/api/v1')) return s
+    if (s.endsWith('/api'))   return "${s}/v1"
+    return "${s}/api/v1"
+}
+
+void mdssc_checkHealth(String server, String credId = 'mdssc-api-key', String header = 'apikey') {
+    String baseUrl = mdssc_apiBaseUrl(server)
+
+    withCredentials([string(credentialsId: credId, variable: 'MDSSC_API_KEY')]) {
+        sh """
+            set -eu
+            echo "=========================================="
+            echo "MDSSC Health Check — ${server}"
+            echo "=========================================="
+
+            check_endpoint() {
+                local path="\$1"
+                local desc="\$2"
+                code=\$(curl -sS -w '%{http_code}' -o .mdssc-hc.json \\
+                    --max-time 15 \\
+                    -H "${header}: \$MDSSC_API_KEY" \\
+                    "${baseUrl}\$path" 2>/dev/null) || code=0
+                echo "GET \$path -> HTTP \$code (\$desc)"
+                if [ "\$code" -ge 200 ] && [ "\$code" -lt 300 ]; then
+                    cat .mdssc-hc.json 2>/dev/null && echo ""
+                    return 0
+                fi
+                return 1
+            }
+
+            check_endpoint "/health"        "health endpoint"           && exit 0 || true
+            check_endpoint "/version"       "version endpoint"          && exit 0 || true
+            check_endpoint "/scans?limit=1" "scans list (connectivity)" && exit 0 || true
+
+            echo "WARNING: Could not confirm MDSSC server health. Continuing pipeline."
+        """
+    }
+}
+
+// ── Pipeline ────────────────────────────────────────────────────────────────
+
+pipeline {
+    agent any
+
+    options {
+        skipDefaultCheckout(false)
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    parameters {
+        choice(name: 'STACK',
+               choices: ['node', 'python', 'java', 'go', 'custom'],
+               description: 'Stack-ul proiectului.')
+        string(name: 'BUILD_COMMAND',
+               defaultValue: '',
+               description: 'Comandă de build custom. Gol = default per stack.')
+        booleanParam(name: 'RUN_DEPLOY',
+                     defaultValue: false,
+                     description: 'Activează stage-ul Deploy.')
+        string(name: 'DEPLOY_METHOD',
+               defaultValue: 'none',
+               description: 'pm2 | docker | systemd | none')
+    }
+
+    environment {
+        ARTIFACT_DIR = 'artifacts'
+    }
+
+    stages {
+
+        // ----------------------------------------------------------
+        // 1. CHECKOUT
+        // ----------------------------------------------------------
+        stage('Checkout') {
+            steps {
+                checkout scm
+
+                sh '''
+                    echo "=== Build Info ==="
+                    echo "Branch : $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo N/A)"
+                    echo "Commit : $(git rev-parse --short HEAD 2>/dev/null || echo N/A)"
+                    echo "=== Tool Versions ==="
+                    node --version   2>/dev/null || echo "node: not found"
+                    npm  --version   2>/dev/null || echo "npm: not found"
+                    docker --version 2>/dev/null || echo "docker: not found"
+                '''
+
+                sh 'rm -rf "$ARTIFACT_DIR" && mkdir -p "$ARTIFACT_DIR"'
+            }
+        }
+
+        // ----------------------------------------------------------
+        // 2. CHECK HEALTH
+        // ----------------------------------------------------------
+        stage('Check Health') {
+            steps {
+                script {
+                    def server = env.MDSSC_INSTANCE_URL?.trim()
+                    if (!server) {
+                        echo "MDSSC_INSTANCE_URL nu e setat — sărit Check Health."
+                    } else {
+                        mdssc_checkHealth(server)
+                    }
+                }
+            }
+        }
+
+        // ----------------------------------------------------------
+        // 3. SECURITY SCAN
+        // ----------------------------------------------------------
+        stage('Security Scan') {
+            when {
+                expression { return params.STACK == 'node' && fileExists('package.json') }
+            }
+            steps {
+                sh 'npm ci --prefer-offline 2>/dev/null || npm ci'
+                sh 'npm audit --json > "$ARTIFACT_DIR/audit.json" 2>/dev/null || true'
+                sh 'npx eslint . --format json --output-file "$ARTIFACT_DIR/eslint-report.json" 2>/dev/null || true'
+                archiveArtifacts artifacts: "${ARTIFACT_DIR}/*.json", allowEmptyArchive: true
+            }
+        }
+
+        // ----------------------------------------------------------
+        // 4. BUILD
+        // ----------------------------------------------------------
+        stage('Build') {
+            steps {
+                script {
+                    echo "=== Build (stack: ${params.STACK}) ==="
+                    def cmd = params.BUILD_COMMAND?.trim()
+
+                    if (params.STACK == 'node') {
+                        sh cmd ?: 'npm ci && npm run build 2>/dev/null || npm ci'
+                    } else if (params.STACK == 'python') {
+                        sh 'pip install -r requirements.txt'
+                        if (cmd) sh cmd
+                    } else if (params.STACK == 'java') {
+                        sh cmd ?: 'mvn package -DskipTests'
+                    } else if (params.STACK == 'go') {
+                        sh cmd ?: 'go build ./...'
+                    } else {
+                        if (cmd) sh cmd
+                        else echo "Stack '${params.STACK}': nicio comandă de build definită."
+                    }
+                }
+            }
+        }
+
+        // ----------------------------------------------------------
+        // 5. DEPLOY
+        // ----------------------------------------------------------
+        stage('Deploy') {
+            when {
+                expression { return params.RUN_DEPLOY && params.DEPLOY_METHOD != 'none' }
+            }
+            steps {
+                script {
+                    echo "=== Deploy (method: ${params.DEPLOY_METHOD}) ==="
+                    if (params.DEPLOY_METHOD == 'docker') {
+                        sh 'docker compose up -d --build'
+                    } else if (params.DEPLOY_METHOD == 'pm2') {
+                        sh 'pm2 restart all || pm2 start npm --name app -- start'
+                    } else if (params.DEPLOY_METHOD == 'systemd') {
+                        sh 'systemctl restart app'
+                    } else {
+                        echo "DEPLOY_METHOD necunoscut: ${params.DEPLOY_METHOD}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success { echo "Pipeline completat cu succes." }
+        failure { echo "Pipeline eșuat — verifică console log." }
+        always  { sh 'rm -f .mdssc-* 2>/dev/null || true' }
+    }
+}
