@@ -89,6 +89,7 @@ docker run -d \
     -e "CASC_JENKINS_CONFIG=/var/casc/jenkins.yaml" \
     -e "MDSSC_INSTANCE=${MDSSC_INSTANCE}" \
     -e "MDSSC_API_KEY=${MDSSC_API_KEY}" \
+    -e "MDSSC_WORKFLOW_ID=${MDSSC_WORKFLOW_ID:-}" \
     -v "${SCRIPT_DIR}/jenkins.yaml:/var/casc/jenkins.yaml:ro" \
     -v "${SCRIPT_DIR}/plugins.txt:/tmp/plugins.txt:ro" \
     -v "${HPI_FILE}:/tmp/mdssc-scanner.hpi:ro" \
@@ -240,25 +241,35 @@ POLL=0
 while [[ $POLL -lt $MAX_POLLS ]]; do
     BUILD_JSON=$(jcurl "${BUILD_URL}/api/json" 2>/dev/null || echo "{}")
 
-    RESULT=$(echo "$BUILD_JSON" | \
-        python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('result') or 'RUNNING')" \
-        2>/dev/null || echo "UNKNOWN")
+    # Verificăm `building` — Jenkins setează result=FAILURE imediat dar build-ul poate fi încă activ
+    RESULT=$(echo "$BUILD_JSON" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+building = d.get('building', False)
+result   = d.get('result') or 'null'
+duration = int(d.get('duration', 0) / 1000)
+if building:
+    print('RUNNING|' + str(duration))
+else:
+    print((result or 'UNKNOWN') + '|' + str(duration))
+" 2>/dev/null || echo "UNKNOWN|0")
 
-    DURATION_S=$(echo "$BUILD_JSON" | \
-        python3 -c "import sys,json; d=json.load(sys.stdin); print(int(d.get('duration',0)/1000))" \
-        2>/dev/null || echo "?")
+    STATE="${RESULT%|*}"
+    DURATION_S="${RESULT#*|}"
 
-    echo "  [$(( POLL * 10 ))s] ${RESULT} (durata: ${DURATION_S}s)"
+    echo "  [$(( POLL * 10 ))s] ${STATE} (durata: ${DURATION_S}s)"
 
-    if [[ "$RESULT" != "RUNNING" && "$RESULT" != "null" && "$RESULT" != "UNKNOWN" ]]; then
+    if [[ "$STATE" != "RUNNING" && "$STATE" != "null" && "$STATE" != "UNKNOWN" ]]; then
         echo ""
-        echo "Build finalizat cu rezultatul: ${RESULT}"
+        echo "Build finalizat cu rezultatul: ${STATE}"
+        RESULT="$STATE"
         break
     fi
 
     sleep 10
     POLL=$((POLL + 1))
 done
+RESULT="${RESULT%|*}"
 
 # Salvare console output
 echo ""

@@ -287,9 +287,10 @@ jobs:
       - name: Run Jenkins plugin integration test
         id: test
         env:
-          MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY:  ${{ secrets.MDSSC_API_KEY }}
-          HPI_FILE:       ${{ github.workspace }}/plugin-out/mdssc-plugin.hpi
+          MDSSC_INSTANCE:     ${{ secrets.MDSSC_INSTANCE }}
+          MDSSC_API_KEY:      ${{ secrets.MDSSC_API_KEY }}
+          MDSSC_WORKFLOW_ID:  ${{ secrets.MDSSC_WORKFLOW_ID }}
+          HPI_FILE:           ${{ github.workspace }}/plugin-out/mdssc-plugin.hpi
         run: |
           bash ci/jenkins/start-jenkins.sh
           echo "passed=true" >> $GITHUB_OUTPUT

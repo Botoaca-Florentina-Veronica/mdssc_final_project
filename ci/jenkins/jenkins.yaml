@@ -17,6 +17,8 @@ jenkins:
         env:
           - key: "MDSSC_INSTANCE_URL"
             value: "${MDSSC_INSTANCE}"
+          - key: "MDSSC_WORKFLOW_ID"
+            value: "${MDSSC_WORKFLOW_ID}"
 
 credentials:
   system:
