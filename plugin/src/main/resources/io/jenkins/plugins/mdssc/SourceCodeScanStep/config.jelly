@@ -14,15 +14,15 @@
   </f:entry>
 
   <f:entry title="Connection" field="connectionId">
-    <f:select/>
+    <f:select fillDependsOn="mdsscInstance credentialsId workflowId"/>
   </f:entry>
 
   <f:entry title="Repository" field="repository">
-    <f:select/>
+    <f:select fillDependsOn="mdsscInstance credentialsId connectionId workflowId"/>
   </f:entry>
 
   <f:entry title="Branch" field="branch">
-    <f:select/>
+    <f:select fillDependsOn="mdsscInstance credentialsId connectionId repository workflowId"/>
   </f:entry>
 
   <f:entry title="Vulnerability Threshold" field="vulnerabilityThreshold">

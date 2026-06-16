@@ -18,6 +18,7 @@ import jenkins.model.Jenkins;
 import jenkins.tasks.SimpleBuildStep;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import hudson.security.ACL;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
@@ -73,13 +74,22 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
             // 1. Health check
             client.checkHealth(log);
 
-            // 2. Resolve workflow
-            WorkflowInfo wf = client.resolveWorkflow(
-                    workflowId != null && !workflowId.isBlank() ? workflowId : null, log);
-
-            if (!wf.isValid()) {
-                log.println("[MDSSC] WARNING: Workflow info incomplete — skipping scan.");
-                run.setResult(Result.UNSTABLE);
+            // 2. Determină storageId + repositoryId.
+            //    Primar: din câmpurile Connection/Repository (selectate în UI).
+            //    Fallback: dacă lipsesc dar e dat workflowId, le rezolvăm din workflow (CI).
+            String storageId = (connectionId != null) ? connectionId.trim() : "";
+            String repoId    = (repository   != null) ? repository.trim()   : "";
+            if ((storageId.isBlank() || repoId.isBlank())
+                    && workflowId != null && !workflowId.isBlank()) {
+                log.println("[MDSSC] Connection/Repository goale — rezolv din workflow " + workflowId);
+                WorkflowInfo wf = client.resolveWorkflow(workflowId.trim(), log);
+                if (storageId.isBlank()) storageId = wf.getStorageId();
+                if (repoId.isBlank())    repoId    = wf.getRepositoryId();
+            }
+            if (storageId.isBlank() || repoId.isBlank()) {
+                listener.error("[MDSSC] Lipsesc Connection/Repository. Completează-le în UI "
+                        + "sau specifică un WorkflowId din care să fie rezolvate.");
+                run.setResult(Result.FAILURE);
                 return;
             }
 
@@ -90,8 +100,11 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
             if (effectiveBranch.startsWith("origin/"))
                 effectiveBranch = effectiveBranch.substring(7);
 
-            // 4. Start indirect scan
-            String scanId = client.scanRepositoryIndirect(wf, effectiveBranch, log);
+            // 4. Start indirect scan (cu nume prietenos rezolvat din GitHub pentru raport)
+            String wfId = (workflowId != null) ? workflowId.trim() : "";
+            String repoName = resolveRepoName(repoId);
+            String scanId = client.scanRepositoryIndirect(
+                    storageId, repoId, repoName, wfId, effectiveBranch, log);
             if (scanId == null || scanId.isBlank()) {
                 log.println("[MDSSC] WARNING: No scan ID returned.");
                 run.setResult(Result.UNSTABLE);
@@ -118,6 +131,21 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
             listener.error("[MDSSC] Source code scan failed: " + e.getMessage());
             run.setResult(Result.FAILURE);
         }
+    }
+
+    // Decodează repoId base64 → ID numeric GitHub → nume real; null dacă nu reușește.
+    static String resolveRepoName(String base64Id) {
+        try {
+            String decoded = new String(java.util.Base64.getDecoder().decode(base64Id),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            int slash = decoded.lastIndexOf('/');
+            if (slash >= 0) {
+                String numeric = decoded.substring(slash + 1);
+                if (numeric.matches("\\d+"))
+                    return MdsscApiClient.githubRepoName(numeric);
+            }
+        } catch (Exception ignored) { /* fallback: fără nume */ }
+        return null;
     }
 
     private String resolveApiKey(Run<?, ?> run) {
@@ -214,19 +242,25 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
             m.add("-- select connection --", "");
             try {
                 String apiKey = resolveKey(credentialsId);
-                if (apiKey.isBlank())
-                    return m;
+                if (apiKey.isBlank()) return m;
                 MdsscApiClient client = new MdsscApiClient(mdsscInstance, apiKey);
-                var connections = client.listConnections(workflowId);
-                if (connections.isArray()) {
-                    for (var c : connections) {
-                        String id = textOf(c, "id", "Id", "connectionId", "ConnectionId");
-                        String name = textOf(c, "name", "Name", "connectionName", "ConnectionName");
-                        m.add(name.isBlank() ? id : name + " (" + id + ")", id);
+
+                // Dacă e specificat workflowId, pre-selectăm conexiunea lui
+                WorkflowInfo wf = workflowInfoQuiet(client, workflowId);
+                String selStorage = (wf != null) ? wf.getStorageId() : "";
+
+                var services = client.listServices();
+                if (services.isArray()) {
+                    for (var s : services) {
+                        String id   = textOf(s, "id", "Id");
+                        String name = textOf(s, "name", "Name", "serviceName", "ServiceName");
+                        String label = name.isBlank() ? id : name + " (" + id + ")";
+                        boolean sel = !selStorage.isBlank() && selStorage.equals(id);
+                        m.add(new ListBoxModel.Option(label, id, sel));
                     }
                 }
-            } catch (Exception ignored) {
-                m.add("(error loading connections)", "");
+            } catch (Exception e) {
+                m.add("(error: " + e.getMessage() + ")", "");
             }
             return m;
         }
@@ -234,45 +268,104 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
         public ListBoxModel doFillRepositoryItems(
                 @QueryParameter String mdsscInstance,
                 @QueryParameter String credentialsId,
-                @QueryParameter String workflowId,
-                @QueryParameter String connectionId) {
+                @QueryParameter String connectionId,
+                @QueryParameter String workflowId) {
             ListBoxModel m = new ListBoxModel();
             m.add("-- select repository --", "");
+            if (connectionId == null || connectionId.isBlank()) return m;
             try {
                 String apiKey = resolveKey(credentialsId);
-                if (apiKey.isBlank())
-                    return m;
+                if (apiKey.isBlank()) return m;
                 MdsscApiClient client = new MdsscApiClient(mdsscInstance, apiKey);
-                var repos = client.listRepositories(workflowId, connectionId);
-                if (repos.isArray()) {
-                    for (var r : repos) {
-                        String id = textOf(r, "id", "Id", "repositoryId", "RepositoryId");
-                        String name = textOf(r, "name", "Name", "repositoryName", "RepositoryName");
-                        m.add(name.isBlank() ? id : name, id);
+
+                // Pre-selectăm repo-ul workflow-ului dacă e specificat
+                WorkflowInfo wf = workflowInfoQuiet(client, workflowId);
+                String selRepo = (wf != null) ? wf.getRepositoryId() : "";
+
+                // MDSSC nu expune nume prietenoase — încercăm GitHub API, fallback la base64
+                var refs = client.listReferences(connectionId);
+                if (refs.isArray()) {
+                    for (var r : refs) {
+                        String id = textOf(r, "repositoryId", "RepositoryId", "id", "Id");
+                        boolean sel = !selRepo.isBlank() && selRepo.equals(id);
+                        m.add(new ListBoxModel.Option(repoDisplayName(id), id, sel));
                     }
                 }
-            } catch (Exception ignored) {
-                m.add("(error loading repositories)", "");
+            } catch (Exception e) {
+                m.add("(error: " + e.getMessage() + ")", "");
             }
             return m;
+        }
+
+        // Preia info workflow fără a arunca excepție (context UI).
+        private WorkflowInfo workflowInfoQuiet(MdsscApiClient client, String workflowId) {
+            if (workflowId == null || workflowId.isBlank()) return null;
+            try {
+                return client.fetchWorkflowById(workflowId.trim());
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        // Nume afișat: încearcă GitHub API (nume real), altfel base64 decodat.
+        private String repoDisplayName(String base64Id) {
+            String decoded = decodeRepoId(base64Id);   // ex: "github-ioana/1264280155"
+            int slash = decoded.lastIndexOf('/');
+            if (slash >= 0) {
+                String numeric = decoded.substring(slash + 1);
+                if (numeric.matches("\\d+")) {
+                    String ghName = MdsscApiClient.githubRepoName(numeric);
+                    if (ghName != null && !ghName.isBlank()) return ghName;
+                }
+            }
+            return decoded;
+        }
+
+        // base64 "Z2l0aHViLWlvYW5hLzEyNjQyODAxNTU=" → "github-ioana/1264280155"
+        private String decodeRepoId(String id) {
+            try {
+                String decoded = new String(java.util.Base64.getDecoder().decode(id),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                return decoded.matches("[\\p{Print}]+") ? decoded : id;
+            } catch (Exception e) {
+                return id;
+            }
         }
 
         public ListBoxModel doFillBranchItems(
                 @QueryParameter String mdsscInstance,
                 @QueryParameter String credentialsId,
-                @QueryParameter String repository) {
+                @QueryParameter String connectionId,
+                @QueryParameter String repository,
+                @QueryParameter String workflowId) {
             ListBoxModel m = new ListBoxModel();
             m.add("-- select branch --", "");
+            if (connectionId == null || connectionId.isBlank()) return m;
             try {
                 String apiKey = resolveKey(credentialsId);
-                if (apiKey.isBlank())
-                    return m;
+                if (apiKey.isBlank()) return m;
                 MdsscApiClient client = new MdsscApiClient(mdsscInstance, apiKey);
-                var branches = client.listBranches(repository);
-                if (branches.isArray()) {
-                    for (var b : branches) {
-                        String name = textOf(b, "name", "Name", "branchName", "BranchName", "ref", "Ref");
-                        m.add(name, name);
+                boolean autoSelect = workflowId != null && !workflowId.isBlank();
+                var refs = client.listReferences(connectionId);
+                if (refs.isArray()) {
+                    for (var r : refs) {
+                        String repoId = textOf(r, "repositoryId", "RepositoryId", "id", "Id");
+                        if (!repoId.equals(repository)) continue;
+                        String def = textOf(r, "defaultReference", "DefaultReference");
+                        JsonNode branches = r.path("references");
+                        if (branches.isMissingNode()) branches = r.path("References");
+                        if (branches.isArray()) {
+                            for (var b : branches) {
+                                String name = b.isTextual() ? b.asText()
+                                        : textOf(b, "name", "Name", "ref", "Ref");
+                                if (name.isBlank()) continue;
+                                boolean sel = autoSelect && name.equals(def);
+                                m.add(new ListBoxModel.Option(name, name, sel));
+                            }
+                        }
+                        if (!def.isBlank() && m.stream().noneMatch(o -> o.value.equals(def)))
+                            m.add(0, new ListBoxModel.Option(def + " (default)", def, autoSelect));
+                        break;
                     }
                 }
             } catch (Exception ignored) {
@@ -295,18 +388,17 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
                     : FormValidation.ok();
         }
 
+        @SuppressWarnings("deprecation")
         private String resolveKey(String credId) {
+            if (credId == null || credId.isBlank()) return "";
             try {
-                return Jenkins.get()
-                        .getDescriptorByType(DescriptorImpl.class) != null
-                                ? CredentialsProvider.lookupCredentials(
-                                        StringCredentials.class, Jenkins.get(), null, Collections.emptyList())
-                                        .stream()
-                                        .filter(c -> c.getId().equals(credId))
-                                        .findFirst()
-                                        .map(c -> c.getSecret().getPlainText())
-                                        .orElse("")
-                                : "";
+                return CredentialsProvider.lookupCredentials(
+                        StringCredentials.class, Jenkins.get(), ACL.SYSTEM, Collections.emptyList())
+                        .stream()
+                        .filter(c -> c.getId().equals(credId))
+                        .findFirst()
+                        .map(c -> c.getSecret().getPlainText())
+                        .orElse("");
             } catch (Exception e) {
                 return "";
             }

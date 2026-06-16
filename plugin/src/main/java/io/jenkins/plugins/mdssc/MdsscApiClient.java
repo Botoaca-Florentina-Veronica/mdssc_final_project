@@ -70,6 +70,11 @@ public class MdsscApiClient {
         return fetchWorkflowById(id, log);
     }
 
+    // Overload silentios pentru context UI (descriptor) — fara log.
+    public WorkflowInfo fetchWorkflowById(String workflowId) throws Exception {
+        return fetchWorkflowById(workflowId, new PrintStream(OutputStream.nullOutputStream()));
+    }
+
     public WorkflowInfo fetchWorkflowById(String workflowId, PrintStream log) throws Exception {
         HttpURLConnection conn = openGet(baseUrl + "/workflows/" + workflowId);
         int code = conn.getResponseCode();
@@ -94,34 +99,70 @@ public class MdsscApiClient {
         return new WorkflowInfo(workflowId, storageId, repoId, repoName);
     }
 
-    public JsonNode listConnections(String workflowId) throws Exception {
-        HttpURLConnection conn = openGet(baseUrl + "/workflows/" + workflowId + "/connections");
-        if (conn.getResponseCode() >= 300)
-            return MAPPER.createArrayNode();
-        return MAPPER.readTree(readBody(conn));
+    // GET /api/v1/services — lista conexiunilor (GitHub, etc.)
+    // Răspunsul poate fi array direct SAU {"serviceDtos":[...]} / {"data":[...]}
+    public JsonNode listServices() throws Exception {
+        HttpURLConnection conn = openGet(baseUrl + "/services");
+        int code = conn.getResponseCode();
+        if (code >= 300)
+            throw new IOException("GET /services → HTTP " + code + " — " + readBody(conn));
+        JsonNode root = MAPPER.readTree(readBody(conn));
+        return unwrapArray(root, "serviceDtos", "ServiceDtos", "services", "Services", "data", "Data");
     }
 
-    public JsonNode listRepositories(String workflowId, String connectionId) throws Exception {
-        String url = baseUrl + "/workflows/" + workflowId + "/repositories"
-                + (connectionId != null && !connectionId.isBlank()
-                        ? "?connectionId=" + URLEncoder.encode(connectionId, "UTF-8")
-                        : "");
-        HttpURLConnection conn = openGet(url);
-        if (conn.getResponseCode() >= 300)
-            return MAPPER.createArrayNode();
-        return MAPPER.readTree(readBody(conn));
+    // GET /api/v1/services/{storageId}/references — repo-uri + branch-uri
+    // Răspunsul poate fi array direct SAU {"repositoryReferenceInfoArray":[...]}
+    public JsonNode listReferences(String storageId) throws Exception {
+        if (storageId == null || storageId.isBlank()) return MAPPER.createArrayNode();
+        HttpURLConnection conn = openGet(baseUrl + "/services/" + storageId + "/references");
+        int code = conn.getResponseCode();
+        if (code >= 300)
+            throw new IOException("GET /services/" + storageId + "/references → HTTP "
+                    + code + " — " + readBody(conn));
+        JsonNode root = MAPPER.readTree(readBody(conn));
+        return unwrapArray(root, "repositoryReferenceInfoArray", "RepositoryReferenceInfoArray",
+                "references", "References", "data", "Data");
     }
 
-    public JsonNode listBranches(String repositoryId) throws Exception {
-        HttpURLConnection conn = openGet(baseUrl + "/repositories/" + repositoryId + "/branches");
-        if (conn.getResponseCode() >= 300)
-            return MAPPER.createArrayNode();
-        return MAPPER.readTree(readBody(conn));
+    // GET https://api.github.com/repositories/{numericId} → numele repo-ului.
+    // Neautentificat (limită 60/oră). Întoarce null la orice eșec (rate limit etc.).
+    public static String githubRepoName(String numericId) {
+        try {
+            HttpURLConnection c = (HttpURLConnection)
+                    new URL("https://api.github.com/repositories/" + numericId).openConnection();
+            c.setRequestMethod("GET");
+            c.setRequestProperty("Accept", "application/vnd.github+json");
+            c.setRequestProperty("User-Agent", "mdssc-jenkins-plugin");
+            c.setConnectTimeout(3000);
+            c.setReadTimeout(3000);
+            if (c.getResponseCode() != 200) return null;
+            try (BufferedReader r = new BufferedReader(
+                    new InputStreamReader(c.getInputStream(), "UTF-8"))) {
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = r.readLine()) != null) sb.append(line);
+                JsonNode n = MAPPER.readTree(sb.toString());
+                if (n.has("name")) return n.get("name").asText();
+                if (n.has("full_name")) return n.get("full_name").asText();
+            }
+        } catch (Exception ignored) { /* fallback la base64 decodat */ }
+        return null;
     }
 
-    public String scanFileDirect(File file, String workflowId, PrintStream log) throws Exception {
+    // Dacă root e deja array → întoarce-l; altfel caută primul câmp care e array.
+    private JsonNode unwrapArray(JsonNode root, String... keys) {
+        if (root != null && root.isArray()) return root;
+        JsonNode inner = firstNonNull(root, keys);
+        if (inner != null && inner.isArray()) return inner;
+        return MAPPER.createArrayNode();
+    }
+
+    public String scanFileDirect(File file, String fileName, String workflowId, PrintStream log)
+            throws Exception {
+        // Numele afișat în raport (fără prefixul fișierului temporar)
+        String displayName = (fileName != null && !fileName.isBlank()) ? fileName : file.getName();
         log.printf("[MDSSC] Uploading artifact: %s (%d KB)%n",
-                file.getName(), file.length() / 1024);
+                displayName, file.length() / 1024);
         String boundary = "----MdsscBoundary" + System.currentTimeMillis();
         HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/scans/direct").openConnection();
         conn.setRequestMethod("POST");
@@ -138,7 +179,7 @@ public class MdsscApiClient {
                         boundary, workflowId);
             }
             pw.printf("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n" +
-                    "Content-Type: application/octet-stream\r\n\r\n", boundary, file.getName());
+                    "Content-Type: application/octet-stream\r\n\r\n", boundary, displayName);
             pw.flush();
             Files.copy(file.toPath(), os);
             os.flush();
@@ -153,13 +194,25 @@ public class MdsscApiClient {
         return extractScanId(MAPPER.readTree(body), log);
     }
 
-    public String scanRepositoryIndirect(WorkflowInfo wf, String branch, PrintStream log) throws Exception {
-        log.printf("[MDSSC] Indirect scan — branch: %s | wf: %s | repo: %s%n",
-                branch, wf.getWorkflowId(), wf.getRepositoryId());
-        String body = String.format(
-                "{\"StorageId\":\"%s\",\"ScanType\":\"Instant\",\"WorkflowId\":\"%s\"," +
-                        "\"RepositoryId\":\"%s\",\"RepositoryReferences\":[\"%s\"]}",
-                wf.getStorageId(), wf.getWorkflowId(), wf.getRepositoryId(), branch);
+    public String scanRepositoryIndirect(String storageId, String repositoryId,
+            String repositoryName, String workflowId, String branch, PrintStream log) throws Exception {
+        log.printf("[MDSSC] Indirect scan — storageId: %s | repoId: %s | branch: %s | wf: %s%n",
+                storageId, repositoryId, branch,
+                (workflowId == null || workflowId.isBlank()) ? "<default>" : workflowId);
+
+        com.fasterxml.jackson.databind.node.ObjectNode payload = MAPPER.createObjectNode();
+        payload.put("storageId", storageId);
+        payload.put("repositoryId", repositoryId);
+        payload.putArray("repositoryReferences").add(branch);
+        payload.put("scanType", 0);
+        // Nume prietenos pentru titlul raportului (rezolvat din GitHub)
+        if (repositoryName != null && !repositoryName.isBlank())
+            payload.put("repositoryName", repositoryName);
+        // workflowId se include DOAR dacă e specificat — gol/lipsă = workflow default
+        if (workflowId != null && !workflowId.isBlank())
+            payload.put("workflowId", workflowId);
+
+        String body = MAPPER.writeValueAsString(payload);
         HttpURLConnection conn = openPost(baseUrl + "/scans", body);
         int code = conn.getResponseCode();
         String resp = readBody(conn);
