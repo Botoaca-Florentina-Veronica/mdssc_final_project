@@ -277,11 +277,35 @@ echo "[jenkins-test] Salvare console output..."
 jcurl "${BUILD_URL}/consoleText" > "${LOG_DIR}/build-console.txt" 2>/dev/null || \
     echo "(console output indisponibil)" > "${LOG_DIR}/build-console.txt"
 
-# Afișare ultimele 80 de linii din console
+# Console complet — într-o secțiune pliabilă GitHub Actions
 echo ""
-echo "── Console Output Jenkins (ultimele 80 linii) ──────────────────────────"
-tail -80 "${LOG_DIR}/build-console.txt" 2>/dev/null || true
-echo "────────────────────────────────────────────────────────────────────────"
+echo "::group::📋 Console Output complet (Jenkins)"
+cat "${LOG_DIR}/build-console.txt" 2>/dev/null || true
+echo "::endgroup::"
+
+# Extrage și afișează raportul unui scan într-o secțiune proprie
+print_scan_report() {
+    local label="$1"
+    local title="$2"
+    echo ""
+    echo "::group::${title}"
+    awk -v lbl="$label" '
+        $0 ~ /MDSSC SCAN REPORT/ && index($0, lbl) {
+            inblock = 1
+            print "=========================================="
+        }
+        inblock { print }
+        inblock && (/Scan passed all thresholds/ || /MDSSC] FAIL/) { inblock = 0 }
+    ' "${LOG_DIR}/build-console.txt" 2>/dev/null || true
+    echo "::endgroup::"
+}
+
+echo ""
+echo "=========================================="
+echo "  REZULTATE SCANĂRI MDSSC"
+echo "=========================================="
+print_scan_report "source-code"       "🔍 Source Code Scan — rezultate"
+print_scan_report "mdssc-scanner.hpi" "🛡️ Artifact Scan — rezultate"
 echo ""
 
 if [[ $POLL -ge $MAX_POLLS ]]; then
