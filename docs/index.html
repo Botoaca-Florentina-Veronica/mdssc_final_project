@@ -270,6 +270,22 @@
       <div class="arrow">→</div>
 
       <div class="stage">
+        <div class="stage-box" id="box-plugin-test">
+          <span class="icon">⚙️</span>
+          <span class="name">Plugin Test</span>
+          <span class="sub">Jenkins Docker</span>
+        </div>
+        <div class="stage-details">
+          Jenkins LTS în Docker<br>
+          Instalează .hpi real<br>
+          Source + Artifact scan
+        </div>
+        <span id="status-plugin-test" class="stage-status status-skipped">pending</span>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="stage">
         <div class="stage-box" id="box-e2e-tests">
           <span class="icon">🧪</span>
           <span class="name">E2E Tests</span>
@@ -338,13 +354,20 @@
         </tr>
         <tr>
           <td>4</td>
+          <td><strong>Plugin Integration Test</strong></td>
+          <td>Jenkins LTS (Docker)</td>
+          <td>Instalează .hpi → rulează Source + Artifact scan</td>
+          <td><span id="tbl-plugin-test" class="stage-status status-skipped">—</span></td>
+        </tr>
+        <tr>
+          <td>5</td>
           <td><strong>E2E Tests</strong></td>
           <td>Playwright + mock server</td>
           <td>Threshold · Secrets · Malware · Bad-input</td>
           <td><span id="tbl-e2e-tests" class="stage-status status-skipped">—</span></td>
         </tr>
         <tr>
-          <td>5</td>
+          <td>6</td>
           <td><strong>Report</strong></td>
           <td>Node.js + GitHub Pages</td>
           <td>Aggregates all results → deploys this page</td>
@@ -536,6 +559,7 @@
     applyStatus('status-source-scan',  'tbl-source-scan',  s.sourceCodeScan?.status);
     applyStatus('status-build',        'tbl-build',        s.build?.status);
     applyStatus('status-artifact-scan','tbl-artifact-scan',s.artifactScan?.status);
+    applyStatus('status-plugin-test',  'tbl-plugin-test',  s.pluginTest?.status);
     applyStatus('status-e2e-tests',    'tbl-e2e-tests',    s.e2eTests?.status);
 
     // Link MDSSC pentru source scan
