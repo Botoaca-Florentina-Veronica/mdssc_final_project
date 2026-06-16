@@ -17,31 +17,54 @@ public class ScanPoller {
         this.pollIntervalSeconds = pollIntervalSeconds;
     }
 
+    // După ScanningState=Completed, analiza pachetelor (SBOM → vulnerabilități)
+    // poate continua câteva secunde. Așteptăm până apar rezultatele reale.
+    private static final long ANALYSIS_GRACE_MS = 90_000;
+
     public ScanResult pollUntilDone(String scanId, String label, PrintStream log)
             throws Exception {
         long start = System.currentTimeMillis();
         long timeout = (long) timeoutSeconds * 1000;
+        long doneSince = -1;
 
         log.printf("[MDSSC] Polling scan %s (%s)...%n", scanId, label);
 
+        ScanResult result = null;
         while (System.currentTimeMillis() - start < timeout) {
-            ScanResult result = client.pollOverview(scanId, log);
+            result = client.pollOverview(scanId, log);
             long elapsed = (System.currentTimeMillis() - start) / 1000;
 
-            log.printf("[MDSSC] [%ds] %s | %s (%s%%) | C:%d H:%d M:%d L:%d | Malware:%d Secrets:%d%n",
+            log.printf("[MDSSC] [%ds] %s | %s (%s%%) | C:%d H:%d M:%d L:%d | Pkg:%d/%d | Malware:%d Secrets:%d%n",
                     elapsed, label,
                     result.getState(), result.getProgress(),
                     result.getCritical(), result.getHigh(),
                     result.getMedium(), result.getLow(),
+                    result.getVulnerablePackages(), result.getTotalPackages(),
                     result.getMalware(), result.getSecrets());
 
-            if (result.isDone())
-                return result;
             if (result.isError())
                 throw new Exception("[MDSSC] Scan failed: " + result.getState());
 
+            if (result.isDone()) {
+                // Rezultate populate → gata.
+                if (result.hasResults())
+                    return result;
+                // Completat dar analiza pachetelor încă rulează → așteptăm grace period.
+                long now = System.currentTimeMillis();
+                if (doneSince < 0) {
+                    doneSince = now;
+                    log.println("[MDSSC] Scan complet — aștept finalizarea analizei pachetelor...");
+                } else if (now - doneSince >= ANALYSIS_GRACE_MS) {
+                    log.println("[MDSSC] Analiză finalizată — nicio vulnerabilitate detectată.");
+                    return result;
+                }
+            }
+
             Thread.sleep(pollIntervalSeconds * 1000L);
         }
+        // Timeout: dacă scanul e cel puțin Completed, întoarce ce avem.
+        if (result != null && result.isDone())
+            return result;
         throw new Exception("[MDSSC] Scan timed out after " + timeoutSeconds + "s");
     }
 

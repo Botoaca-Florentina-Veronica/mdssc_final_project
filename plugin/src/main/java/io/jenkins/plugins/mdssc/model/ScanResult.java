@@ -10,6 +10,7 @@ public class ScanResult {
     private String progress;
     private int critical, high, medium, low;
     private int malware, secrets, blockedLicenses;
+    private int totalPackages, vulnerablePackages;
 
     private static final Set<String> DONE_STATES = new HashSet<>(Arrays.asList(
             "completed", "complete", "finished", "done", "success"));
@@ -52,7 +53,23 @@ public class ScanResult {
             r.secrets         = intOf(data, "Secret",  "secret", "Secrets", "secrets");
             r.blockedLicenses = intOf(data, "BlockedLicensesCount", "blockedLicensesCount");
         }
+
+        // Package.{TotalPackages,VulnerablePackages} — semnal că analiza SBOM e gata
+        JsonNode pkg = firstOf(data, "Package", "package");
+        if (pkg == null && scanInfo != null)
+            pkg = firstOf(scanInfo, "Package", "package");
+        if (pkg != null) {
+            r.totalPackages      = intOf(pkg, "TotalPackages", "totalPackages");
+            r.vulnerablePackages = intOf(pkg, "VulnerablePackages", "vulnerablePackages");
+        }
         return r;
+    }
+
+    // True dacă analiza pachetelor a produs rezultate (vs. scan abia "Completed" cu 0).
+    public boolean hasResults() {
+        return totalPackages > 0
+                || critical > 0 || high > 0 || medium > 0 || low > 0
+                || malware > 0 || secrets > 0 || blockedLicenses > 0;
     }
 
     public boolean isDone() {
@@ -97,6 +114,14 @@ public class ScanResult {
 
     public int getBlockedLicenses() {
         return blockedLicenses;
+    }
+
+    public int getTotalPackages() {
+        return totalPackages;
+    }
+
+    public int getVulnerablePackages() {
+        return vulnerablePackages;
     }
 
     // Identic cu Jenkins mdsscAdvanced.groovy — caută și în obiectul nested scanStatus
