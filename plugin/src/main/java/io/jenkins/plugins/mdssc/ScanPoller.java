@@ -46,9 +46,16 @@ public class ScanPoller {
                 throw new Exception("[MDSSC] Scan failed: " + result.getState());
 
             if (result.isDone()) {
-                // Rezultate populate → gata.
-                if (result.hasResults())
-                    return result;
+                // /overview e învechit la scanări directe — luăm rezultatul autoritar.
+                ScanResult authoritative = client.fetchAuthoritative(scanId, log);
+                ScanResult best = (authoritative != null) ? authoritative : result;
+
+                if (best.hasResults()) {
+                    log.printf("[MDSSC] Rezultate finale: C:%d H:%d M:%d L:%d | Pkg:%d/%d%n",
+                            best.getCritical(), best.getHigh(), best.getMedium(), best.getLow(),
+                            best.getVulnerablePackages(), best.getTotalPackages());
+                    return best;
+                }
                 // Completat dar analiza pachetelor încă rulează → așteptăm grace period.
                 long now = System.currentTimeMillis();
                 if (doneSince < 0) {
@@ -56,15 +63,17 @@ public class ScanPoller {
                     log.println("[MDSSC] Scan complet — aștept finalizarea analizei pachetelor...");
                 } else if (now - doneSince >= ANALYSIS_GRACE_MS) {
                     log.println("[MDSSC] Analiză finalizată — nicio vulnerabilitate detectată.");
-                    return result;
+                    return best;
                 }
             }
 
             Thread.sleep(pollIntervalSeconds * 1000L);
         }
-        // Timeout: dacă scanul e cel puțin Completed, întoarce ce avem.
-        if (result != null && result.isDone())
-            return result;
+        // Timeout: încearcă rezultatul autoritar, altfel ce avem.
+        if (result != null && result.isDone()) {
+            ScanResult authoritative = client.fetchAuthoritative(scanId, log);
+            return (authoritative != null) ? authoritative : result;
+        }
         throw new Exception("[MDSSC] Scan timed out after " + timeoutSeconds + "s");
     }
 

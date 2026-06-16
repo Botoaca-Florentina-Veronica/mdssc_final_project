@@ -249,6 +249,47 @@ public class MdsscApiClient {
         return ScanResult.fromJson(MAPPER.readTree(readBody(conn)));
     }
 
+    // Rezultat autoritar pentru scanări finalizate.
+    // /overview e învechit la scanări directe — încearcă /scans/{id} apoi lista /scans.
+    public ScanResult fetchAuthoritative(String scanId, PrintStream log) throws Exception {
+        // 1. Înregistrarea completă GET /scans/{id}
+        try {
+            HttpURLConnection c = openGet(baseUrl + "/scans/" + scanId);
+            if (c.getResponseCode() < 300) {
+                ScanResult r = ScanResult.fromJson(MAPPER.readTree(readBody(c)));
+                if (r.hasResults()) return r;
+            }
+        } catch (Exception ignored) { /* trece la listă */ }
+
+        // 2. Caută în lista de scanări recente (sursa pe care o citește și UI-ul)
+        try {
+            HttpURLConnection c = openGet(baseUrl + "/scans?limit=50");
+            if (c.getResponseCode() < 300) {
+                JsonNode root = MAPPER.readTree(readBody(c));
+                JsonNode arr = root.isArray() ? root : firstArrayField(root);
+                if (arr != null && arr.isArray()) {
+                    for (JsonNode n : arr) {
+                        String id = textOf(n, "ScanId", "scanId", "id", "Id");
+                        if (scanId.equals(id))
+                            return ScanResult.fromJson(n);
+                    }
+                }
+            }
+        } catch (Exception ignored) { /* nimic */ }
+        return null;
+    }
+
+    // Găsește primul câmp care e array într-un obiect JSON (pt. wrappere necunoscute).
+    private JsonNode firstArrayField(JsonNode obj) {
+        if (obj == null || !obj.isObject()) return null;
+        java.util.Iterator<JsonNode> it = obj.elements();
+        while (it.hasNext()) {
+            JsonNode v = it.next();
+            if (v != null && v.isArray()) return v;
+        }
+        return null;
+    }
+
     private HttpURLConnection openGet(String url) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setRequestMethod("GET");

@@ -49,8 +49,11 @@ public class ScanResult {
             if (lic != null)
                 r.blockedLicenses = intOf(lic, "BlockedLicensesCount", "blockedLicensesCount");
         } else {
-            r.malware         = intOf(data, "Malware", "malware");
-            r.secrets         = intOf(data, "Secret",  "secret", "Secrets", "secrets");
+            // Structură plată (GET /scans/{id} la scanări directe):
+            // InfectedFiles / FilesWithSecrets sunt numere, nu booleeni.
+            r.malware = intOf(data, "InfectedFiles", "infectedFiles", "Malware", "malware");
+            r.secrets = intOf(data, "FilesWithSecrets", "filesWithSecrets",
+                    "Secret", "secret", "Secrets", "secrets");
             r.blockedLicenses = intOf(data, "BlockedLicensesCount", "blockedLicensesCount");
         }
 
@@ -131,10 +134,13 @@ public class ScanResult {
             if (data != null && data.has(k) && data.get(k).isTextual())
                 return data.get(k).asText();
         }
-        // 2. Obiect nested: scanStatus.scanningState / ScanStatus.ScanningState
+        // 2. ScanStatus poate fi obiect nested SAU string direct (scanări directe)
         for (String outer : new String[]{"scanStatus", "ScanStatus"}) {
             JsonNode ss = data != null ? data.path(outer) : null;
-            if (ss != null && !ss.isMissingNode() && ss.isObject()) {
+            if (ss == null || ss.isMissingNode()) continue;
+            if (ss.isTextual())          // string direct: "Completed"
+                return ss.asText();
+            if (ss.isObject()) {         // obiect nested: {ScanningState:"Completed"}
                 for (String inner : new String[]{"scanningState", "ScanningState"}) {
                     if (ss.has(inner) && ss.get(inner).isTextual())
                         return ss.get(inner).asText();
