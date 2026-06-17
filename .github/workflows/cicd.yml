@@ -14,8 +14,8 @@ on:
 
   # ── Rulare manuală cu parametri personalizați ────────────────────────────────
   # Accesează GitHub → Actions → CI/CD → Run workflow → completează câmpurile.
-  # Valorile introduse aici suprascriu ci/mdssc-params.env.
-  # Lasa gol pentru a folosi valorile implicite din ci/mdssc-params.env.
+  # Valorile introduse aici suprascriu .github/mdssc-params.env.
+  # Lasa gol pentru a folosi valorile implicite din .github/mdssc-params.env.
   workflow_dispatch:
     inputs:
       # ── Conexiune ──────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# ── Valori implicite — suprascrise de workflow_dispatch inputs sau ci/mdssc-params.env ──
+# ── Valori implicite — suprascrise de workflow_dispatch inputs sau .github/mdssc-params.env ──
 env:
   MDSSC_API_KEY_HEADER:       ${{ inputs.api_key_header         || 'apikey' }}
   VULNERABILITY_THRESHOLD:    ${{ inputs.vulnerability_threshold || 'critical' }}
@@ -459,3 +459,35 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Release Plugin (.hpi) pe GitHub — opțional
+  # Se activează DOAR dacă variabila de repo MDSSC_RELEASE == 'true', la push pe main.
+  # Tag: vYYYY.MM.DD-<run_number> (mereu unic).
+  # needs: build ⇒ rulează doar dacă scanările au trecut (build depinde de source-scan).
+  # ─────────────────────────────────────────────────────────────────────────────
+  release:
+    name: "Release Plugin (.hpi)"
+    needs: build
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.MDSSC_RELEASE == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download .hpi
+        uses: actions/download-artifact@v4
+        with:
+          name: mdssc-plugin-hpi
+          path: plugin-out/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"
+          echo "Creating release $TAG cu artefactul .hpi"
+          gh release create "$TAG" plugin-out/mdssc-plugin.hpi \
+            --title "MDSSC Plugin $TAG" \
+            --notes "Release automat de pe main @ ${GITHUB_SHA:0:7} (run #${GITHUB_RUN_NUMBER})"

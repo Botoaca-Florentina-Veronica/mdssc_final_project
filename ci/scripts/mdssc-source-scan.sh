@@ -23,12 +23,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARAMS_FILE="${SCRIPT_DIR}/../mdssc-params.env"
+PARAMS_FILE="${SCRIPT_DIR}/../../.github/mdssc-params.env"
 GH_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 
 # ── 1. Încarcă parametri din config (valorile deja setate în env au prioritate) ──
 if [[ -f "$PARAMS_FILE" ]]; then
-    # shellcheck source=ci/mdssc-params.env
+    # shellcheck source=.github/mdssc-params.env
     source "$PARAMS_FILE"
 fi
 
@@ -113,7 +113,7 @@ if [[ -z "$WF_ID" ]]; then
     fi
 fi
 
-[[ -n "$WF_ID" ]] || use_mock "Nu s-a putut determina workflow ID — setează MDSSC_WORKFLOW_ID în mdssc-params.env sau ca secret GitHub"
+[[ -n "$WF_ID" ]] || use_mock "Nu s-a putut determina workflow ID — setează MDSSC_WORKFLOW_ID în .github/mdssc-params.env sau ca secret GitHub"
 
 # ── 3. Fetch StorageId + RepositoryId din workflow ────────────────────────────
 STORAGE_ID="${MDSSC_STORAGE_ID:-}"
