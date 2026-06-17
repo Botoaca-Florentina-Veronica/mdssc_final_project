@@ -76,6 +76,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read   # necesar pentru jobs API (durate pe stage în raport)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -396,6 +397,8 @@ jobs:
           PLUGIN_TEST_STATUS:    ${{ needs.plugin-test.result }}
           E2E_STATUS:            ${{ needs.e2e-tests.result }}
           RUN_URL:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID:     ${{ github.run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
           COMMIT_SHA: ${{ github.sha }}
           BRANCH:     ${{ github.ref_name }}
           REPO:       ${{ github.repository }}

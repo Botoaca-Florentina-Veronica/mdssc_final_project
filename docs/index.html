@@ -64,39 +64,60 @@
     .pipeline {
       display: flex;
       align-items: center;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 0;
-      justify-content: center;
-      padding: 8px 0;
+      justify-content: safe center;
+      padding: 12px 4px 20px;
+      overflow-x: auto;
     }
-    .stage {
+    .parallel-group {
       display: flex;
       flex-direction: column;
-      align-items: center;
-      gap: 6px;
+      gap: 14px;
+      flex-shrink: 0;
+      position: relative;
     }
+    /* Vertical rails that join the two parallel nodes (branch / merge look).
+       Drawn only on the side where a connector actually meets the group. */
+    .parallel-group:has(+ .arrow)::after,
+    .arrow + .parallel-group::before {
+      content: '';
+      position: absolute;
+      top: 25%;
+      bottom: 25%;
+      width: 2px;
+      background: var(--border);
+    }
+    .parallel-group:has(+ .arrow)::after { right: -2px; }
+    .arrow + .parallel-group::before     { left: -2px; }
+    .stage { display: flex; flex-shrink: 0; }
     .stage-box {
-      background: #1c2128;
-      border: 2px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 18px;
-      text-align: center;
-      min-width: 120px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      width: 168px;            /* fixed → every node (incl. parallel) identical */
+      background: #161b22;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 10px 12px;
       cursor: default;
-      transition: border-color .15s;
+      transition: border-color .15s, box-shadow .15s;
     }
-    .stage-box:hover { border-color: var(--blue); }
-    .stage-box .icon { font-size: 22px; display: block; margin-bottom: 4px; }
-    .stage-box .name { font-size: 12px; font-weight: 600; color: var(--text); }
-    .stage-box .sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
-    .stage-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+    .stage-box:hover { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+    .node-icon { font-size: 18px; line-height: 1; flex-shrink: 0; }
+    .node-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .node-head { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .node-name { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .node-sub  { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stage-status { font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 10px; align-self: flex-start; }
 
+    /* Thin connector line between nodes */
     .arrow {
-      font-size: 20px;
-      color: var(--border);
-      padding: 0 6px;
-      align-self: center;
-      margin-bottom: 24px;
+      flex-shrink: 0;
+      width: 14px;
+      height: 2px;
+      background: var(--border);
+      font-size: 0;
     }
 
     /* Stage status colours */
@@ -105,17 +126,9 @@
     .status-skipped  { background: rgba(139,148,158,.1); color: var(--muted); border: 1px solid rgba(139,148,158,.2); }
     .status-pending  { background: rgba(210,153,34,.12); color: var(--yellow);border: 1px solid rgba(210,153,34,.3); }
 
-    .stage-box.success  { border-color: var(--green); }
-    .stage-box.failure  { border-color: var(--red); }
-    .stage-box.skipped  { opacity: .6; }
-
-    /* ── Detail sub-lists inside the pipeline diagram ─────────────────────── */
-    .stage-details {
-      font-size: 10px;
-      color: var(--muted);
-      text-align: center;
-      line-height: 1.5;
-    }
+    .stage-box.success  { border-color: rgba(63,185,80,.5); }
+    .stage-box.failure  { border-color: rgba(248,81,73,.5); }
+    .stage-box.skipped  { opacity: .65; }
 
     /* ── Stage table ─────────────────────────────────────────────────────── */
     table { width: 100%; border-collapse: collapse; }
@@ -140,6 +153,32 @@
     .sev-unknown  { background: rgba(139,148,158,.1); color: #8b949e; border-color: rgba(139,148,158,.2); }
     .sev-ok       { background: rgba(63,185,80,.12);  color: #3fb950; border-color: rgba(63,185,80,.3); }
 
+    /* ── Donut chart ─────────────────────────────────────────────────────── */
+    .scan-block { margin-bottom: 24px; }
+    .scan-block-title { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+    .donut-wrap { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+    .donut { width: 120px; height: 120px; flex-shrink: 0; }
+    .donut-ring { fill: none; stroke: rgba(255,255,255,.06); stroke-width: 4; }
+    .donut-center { fill: var(--text); font-size: 8px; font-weight: 700; text-anchor: middle; dominant-baseline: central; font-family: ui-monospace, monospace; }
+    .donut-center-sub { fill: var(--muted); font-size: 3.5px; text-anchor: middle; dominant-baseline: central; }
+    .donut-legend { display: flex; flex-direction: column; gap: 7px; }
+    .donut-legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+    .donut-legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+    .donut-legend .val { font-family: ui-monospace, monospace; font-weight: 600; }
+
+    /* ── Stage duration timeline ─────────────────────────────────────────── */
+    .tl-row { display: grid; grid-template-columns: 170px 1fr 72px; align-items: center; gap: 12px; padding: 6px 0; }
+    .tl-label { font-size: 13px; color: var(--text); }
+    .tl-track { background: rgba(255,255,255,.05); border-radius: 4px; height: 14px; overflow: hidden; }
+    .tl-bar { height: 100%; border-radius: 4px; min-width: 2px; }
+    .bar-ok   { background: var(--green); }
+    .bar-fail { background: var(--red); }
+    .bar-skip { background: var(--muted); }
+    .tl-time { font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; text-align: right; }
+    @media (max-width: 600px) { .tl-row { grid-template-columns: 110px 1fr 60px; gap: 8px; } }
+
+    .build-size { font-size: 10px; color: var(--blue); margin-top: 2px; }
+
     /* ── Test results ────────────────────────────────────────────────────── */
     .test-group   { margin-bottom: 16px; }
     .test-group h4{ font-size: 13px; color: var(--blue); margin-bottom: 8px; }
@@ -148,6 +187,7 @@
     .dot-pass { background: var(--green); }
     .dot-fail { background: var(--red); }
     .dot-skip { background: var(--muted); }
+    .dot-pending { background: var(--yellow); }
 
     /* ── Meta info ───────────────────────────────────────────────────────── */
     .meta-row { display: flex; gap: 24px; flex-wrap: wrap; }
@@ -170,6 +210,16 @@
     .banner-failure { background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); color: var(--red); }
     .banner-pending { background: rgba(210,153,34,.1); border: 1px solid rgba(210,153,34,.3); color: var(--yellow); }
 
+    .pending-notice {
+      background: rgba(210,153,34,.08);
+      border: 1px solid rgba(210,153,34,.25);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--yellow);
+      margin-bottom: 16px;
+    }
+
     footer {
       border-top: 1px solid var(--border);
       text-align: center;
@@ -186,7 +236,6 @@
 <body>
 
 <header>
-  <!-- OPSWAT-style shield icon -->
   <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect width="40" height="40" rx="8" fill="#1c2128"/>
     <path d="M20 6 L32 11 L32 22 C32 28 26 33 20 35 C14 33 8 28 8 22 L8 11 Z" fill="#1f6feb" opacity=".3"/>
@@ -220,99 +269,95 @@
 
     <div class="pipeline">
 
-      <div class="stage">
-        <div class="stage-box" id="box-source-scan">
-          <span class="icon">🔍</span>
-          <span class="name">Code Scan</span>
-          <span class="sub">MDSSC source</span>
+      <!-- Stages 1 + 2 run in parallel -->
+      <div class="parallel-group">
+
+        <div class="stage">
+          <div class="stage-box" id="box-source-scan">
+            <span class="node-icon">🔍</span>
+            <div class="node-body">
+              <div class="node-head"><span class="node-name">Code Scan</span><span class="node-sub">MDSSC source</span></div>
+              <span id="status-source-scan" class="stage-status status-skipped">pending</span>
+              <div id="mdssc-link-container"></div>
+            </div>
+          </div>
         </div>
-        <div class="stage-details">
-          MDSSC /api/v1/scans<br>
-          Threshold gate<br>
-          Fail on secret/malware
+
+        <div class="stage">
+          <div class="stage-box" id="box-security-scan">
+            <span class="node-icon">🔒</span>
+            <div class="node-body">
+              <div class="node-head"><span class="node-name">Security Scan</span><span class="node-sub">npm audit</span></div>
+              <span id="status-security-scan" class="stage-status status-skipped">pending</span>
+            </div>
+          </div>
         </div>
-        <span id="status-source-scan" class="stage-status status-skipped">pending</span>
-        <div id="mdssc-link-container"></div>
+
       </div>
 
-      <div class="arrow">→</div>
+      <div class="arrow"></div>
 
       <div class="stage">
         <div class="stage-box" id="box-build">
-          <span class="icon">📦</span>
-          <span class="name">Build .hpi</span>
-          <span class="sub">mvn package</span>
+          <span class="node-icon">📦</span>
+          <div class="node-body">
+            <div class="node-head"><span class="node-name">Build .hpi</span><span class="node-sub">mvn package</span></div>
+            <span id="status-build" class="stage-status status-skipped">pending</span>
+            <div id="build-size-note" class="build-size"></div>
+          </div>
         </div>
-        <div class="stage-details">
-          Maven / stub fallback<br>
-          Produces artifact<br>
-          Uploaded to Actions
-        </div>
-        <span id="status-build" class="stage-status status-skipped">pending</span>
       </div>
 
-      <div class="arrow">→</div>
+      <div class="arrow"></div>
 
       <div class="stage">
         <div class="stage-box" id="box-artifact-scan">
-          <span class="icon">🛡️</span>
-          <span class="name">Artifact Scan</span>
-          <span class="sub">MDSSC direct</span>
+          <span class="node-icon">🛡️</span>
+          <div class="node-body">
+            <div class="node-head"><span class="node-name">Artifact Scan</span><span class="node-sub">MDSSC direct</span></div>
+            <span id="status-artifact-scan" class="stage-status status-skipped">pending</span>
+            <div id="mdssc-link-container-artifact"></div>
+          </div>
         </div>
-        <div class="stage-details">
-          Upload .hpi<br>
-          /api/v1/scans/direct<br>
-          Poll + gate
-        </div>
-        <span id="status-artifact-scan" class="stage-status status-skipped">pending</span>
       </div>
 
-      <div class="arrow">→</div>
+      <div class="arrow"></div>
 
-      <div class="stage">
-        <div class="stage-box" id="box-plugin-test">
-          <span class="icon">⚙️</span>
-          <span class="name">Plugin Test</span>
-          <span class="sub">Jenkins Docker</span>
+      <!-- Stages 5 + 6 run in parallel -->
+      <div class="parallel-group">
+
+        <div class="stage">
+          <div class="stage-box" id="box-plugin-test">
+            <span class="node-icon">⚙️</span>
+            <div class="node-body">
+              <div class="node-head"><span class="node-name">Plugin Test</span><span class="node-sub">Jenkins Docker</span></div>
+              <span id="status-plugin-test" class="stage-status status-skipped">pending</span>
+            </div>
+          </div>
         </div>
-        <div class="stage-details">
-          Jenkins LTS în Docker<br>
-          Instalează .hpi real<br>
-          Source + Artifact scan
+
+        <div class="stage">
+          <div class="stage-box" id="box-e2e-tests">
+            <span class="node-icon">🧪</span>
+            <div class="node-body">
+              <div class="node-head"><span class="node-name">E2E Tests</span><span class="node-sub">Playwright</span></div>
+              <span id="status-e2e-tests" class="stage-status status-skipped">pending</span>
+            </div>
+          </div>
         </div>
-        <span id="status-plugin-test" class="stage-status status-skipped">pending</span>
+
       </div>
 
-      <div class="arrow">→</div>
-
-      <div class="stage">
-        <div class="stage-box" id="box-e2e-tests">
-          <span class="icon">🧪</span>
-          <span class="name">E2E Tests</span>
-          <span class="sub">Playwright</span>
-        </div>
-        <div class="stage-details">
-          Mock MDSSC server<br>
-          Threshold / secrets /<br>
-          malware / bad-input
-        </div>
-        <span id="status-e2e-tests" class="stage-status status-skipped">pending</span>
-      </div>
-
-      <div class="arrow">→</div>
+      <div class="arrow"></div>
 
       <div class="stage">
         <div class="stage-box" id="box-report">
-          <span class="icon">📊</span>
-          <span class="name">Report</span>
-          <span class="sub">GitHub Pages</span>
+          <span class="node-icon">📊</span>
+          <div class="node-body">
+            <div class="node-head"><span class="node-name">Report</span><span class="node-sub">GitHub Pages</span></div>
+            <span id="status-report" class="stage-status status-skipped">this page</span>
+          </div>
         </div>
-        <div class="stage-details">
-          Pipeline status<br>
-          E2E results<br>
-          Testing report
-        </div>
-        <span id="status-report" class="stage-status status-skipped">this page</span>
       </div>
 
     </div>
@@ -340,34 +385,41 @@
         </tr>
         <tr>
           <td>2</td>
+          <td><strong>Security Scan</strong></td>
+          <td>npm audit</td>
+          <td>Scans <code>e2e/</code> dependencies — informational</td>
+          <td><span id="tbl-security-scan" class="stage-status status-skipped">—</span></td>
+        </tr>
+        <tr>
+          <td>3</td>
           <td><strong>Build Plugin</strong></td>
           <td>Maven / stub</td>
           <td>Produces <code>mdssc-plugin.hpi</code></td>
           <td><span id="tbl-build" class="stage-status status-skipped">—</span></td>
         </tr>
         <tr>
-          <td>3</td>
+          <td>4</td>
           <td><strong>Artifact Scan</strong></td>
           <td>MDSSC REST API</td>
           <td><code>POST /api/v1/scans/direct</code> → poll → gate</td>
           <td><span id="tbl-artifact-scan" class="stage-status status-skipped">—</span></td>
         </tr>
         <tr>
-          <td>4</td>
+          <td>5</td>
           <td><strong>Plugin Integration Test</strong></td>
           <td>Jenkins LTS (Docker)</td>
           <td>Instalează .hpi → rulează Source + Artifact scan</td>
           <td><span id="tbl-plugin-test" class="stage-status status-skipped">—</span></td>
         </tr>
         <tr>
-          <td>5</td>
+          <td>6</td>
           <td><strong>E2E Tests</strong></td>
           <td>Playwright + mock server</td>
           <td>Threshold · Secrets · Malware · Bad-input</td>
           <td><span id="tbl-e2e-tests" class="stage-status status-skipped">—</span></td>
         </tr>
         <tr>
-          <td>6</td>
+          <td>7</td>
           <td><strong>Report</strong></td>
           <td>Node.js + GitHub Pages</td>
           <td>Aggregates all results → deploys this page</td>
@@ -375,6 +427,15 @@
         </tr>
       </tbody>
     </table>
+  </div>
+
+  <!-- ── Stage durations (populated from pipeline-report.json) ──────────── -->
+  <div class="card" id="timeline-card" style="display:none">
+    <h2>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm7.25-3.25a.75.75 0 0 0-1.5 0V8c0 .2.08.39.22.53l1.75 1.75a.75.75 0 1 0 1.06-1.06L8.75 7.69Z"/></svg>
+      Stage Durations
+    </h2>
+    <div id="timeline"></div>
   </div>
 
   <!-- ── Scan results (populated from pipeline-report.json) ─────────────── -->
@@ -390,52 +451,56 @@
       E2E Test Coverage
     </h2>
 
+    <div class="pending-notice">
+      ⚠️ E2E tests are not yet implemented — Playwright test files are pending (Track C). The scenarios below represent the planned test coverage.
+    </div>
+
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px">
 
       <div class="test-group">
         <h4>Vulnerability Threshold (Source &amp; Artifact)</h4>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on critical threshold</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on high threshold</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on medium threshold</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on low threshold</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Fails on unknown severity</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Passes when threshold = none</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on critical threshold</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on high threshold</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on medium threshold</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on low threshold</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on unknown severity</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Passes when threshold = none</div>
       </div>
 
       <div class="test-group">
         <h4>Secrets &amp; Malware Detection</h4>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Fails when secrets found + failOnSecret=true</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Passes when secrets found + failOnSecret=false</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Fails when malware found + failOnMalware=true</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Passes when malware found + failOnMalware=false</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Fails when secrets found + failOnSecret=true</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Passes when secrets found + failOnSecret=false</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Fails when malware found + failOnMalware=true</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Passes when malware found + failOnMalware=false</div>
       </div>
 
       <div class="test-group">
         <h4>Bad Input / Error Handling</h4>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Invalid API key → 401</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Unreachable MDSSC URL throws</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Invalid connection ID → 400</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Workflow not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Invalid API key → 401</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Unreachable MDSSC URL throws</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Invalid connection ID → 400</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Workflow not found → 404</div>
       </div>
 
       <div class="test-group">
         <h4>Source Code Scan Step</h4>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Repository not found → 404</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Branch not found → 404</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Invalid connection ID → 400</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Workflow not found → 404</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Default workflow when ID omitted</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Full clean scan flow passes</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Repository not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Branch not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Invalid connection ID → 400</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Workflow not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Default workflow when ID omitted</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Full clean scan flow passes</div>
       </div>
 
       <div class="test-group">
         <h4>Artifact Scan Step</h4>
-        <div class="test-item"><span class="test-dot dot-pass"></span>File not found → 400</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>File too large → 413</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Unsupported file type → 415</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Workflow not found → 404</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Default workflow when ID omitted</div>
-        <div class="test-item"><span class="test-dot dot-pass"></span>Full clean scan flow passes</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>File not found → 400</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>File too large → 413</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Unsupported file type → 415</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Workflow not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Default workflow when ID omitted</div>
+        <div class="test-item"><span class="test-dot dot-pending"></span>Full clean scan flow passes</div>
       </div>
 
     </div>
@@ -450,12 +515,15 @@
     <table>
       <thead><tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr></thead>
       <tbody>
-        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/health</code></td>                   <td>Verify instance reachability</td></tr>
-        <tr><td><code style="color:var(--blue)">POST</code></td>  <td><code>/api/v1/scans</code></td>                    <td>Source scan via repo/branch reference</td></tr>
-        <tr><td><code style="color:var(--blue)">POST</code></td>  <td><code>/api/v1/scans/direct</code></td>             <td>Artifact direct file upload + scan</td></tr>
-        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/scans/{id}/overview</code></td>      <td>Poll scan status</td></tr>
-        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/scans/{id}</code></td>               <td>Full result with vulnerability breakdown</td></tr>
-        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/workflows/{workflowId}</code></td>   <td>Fetch workflow metadata</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/health</code></td>                         <td>Verify instance reachability</td></tr>
+        <tr><td><code style="color:var(--blue)">POST</code></td>  <td><code>/api/v1/scans</code></td>                          <td>Source scan via repo/branch reference</td></tr>
+        <tr><td><code style="color:var(--blue)">POST</code></td>  <td><code>/api/v1/scans/direct</code></td>                   <td>Artifact direct file upload + scan</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/scans/{id}/overview</code></td>            <td>Poll scan progress</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/scans/{id}</code></td>                     <td>Full result with vulnerability breakdown</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/workflows</code></td>                      <td>List workflows (used for auto-detection)</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/workflows/{workflowId}</code></td>         <td>Fetch workflow metadata</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/services</code></td>                       <td>List Git connections (for UI dropdowns)</td></tr>
+        <tr><td><code style="color:var(--green)">GET</code></td>  <td><code>/api/v1/services/{id}/references</code></td>       <td>List repos &amp; branches per connection</td></tr>
       </tbody>
     </table>
   </div>
@@ -505,33 +573,131 @@
 
     const boxId = diagramId.replace('status-', 'box-');
     const box = document.getElementById(boxId);
-    if (box) box.classList.add(boxCls);
+    if (box) {
+      box.classList.remove('success', 'failure', 'skipped');
+      box.classList.add(boxCls);
+    }
+  }
+
+  const SEV_COLORS = {
+    critical: '#f85149', high: '#ffa657', medium: '#d29922',
+    low: '#58a6ff', unknown: '#8b949e',
+  };
+
+  // SVG donut from severity counts. `entries` = [{label, value, color}].
+  function renderDonut(entries) {
+    const present = entries.filter(e => e.value > 0);
+    const total = present.reduce((a, e) => a + e.value, 0);
+
+    let segments, legend;
+    if (total === 0) {
+      segments = `<circle cx="21" cy="21" r="15.915" fill="none" stroke="#3fb950" stroke-width="4"></circle>`;
+      legend = `<div class="donut-legend-item">
+                  <span class="donut-legend-dot" style="background:#3fb950"></span>
+                  No vulnerabilities</div>`;
+    } else {
+      let offset = 25; // rotate dash start to 12 o'clock
+      segments = present.map(e => {
+        const pct = (e.value / total) * 100;
+        const seg = `<circle cx="21" cy="21" r="15.915" fill="none" stroke="${e.color}" stroke-width="4"
+          stroke-dasharray="${pct.toFixed(2)} ${(100 - pct).toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"></circle>`;
+        offset = (offset - pct + 100) % 100;
+        return seg;
+      }).join('');
+      legend = present.map(e => `
+        <div class="donut-legend-item">
+          <span class="donut-legend-dot" style="background:${e.color}"></span>
+          ${e.label}<span class="val">${e.value}</span>
+        </div>`).join('');
+    }
+
+    return `
+      <div class="donut-wrap">
+        <svg class="donut" viewBox="0 0 42 42">
+          <circle class="donut-ring" cx="21" cy="21" r="15.915"></circle>
+          ${segments}
+          <text x="21" y="20" class="donut-center">${total}</text>
+          <text x="21" y="25.5" class="donut-center-sub">${total === 1 ? 'finding' : 'findings'}</text>
+        </svg>
+        <div class="donut-legend">${legend}</div>
+      </div>`;
+  }
+
+  function fmtDuration(s) {
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60), r = s % 60;
+    return `${m}m ${r.toString().padStart(2, '0')}s`;
+  }
+
+  function fmtBytes(b) {
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1024 / 1024).toFixed(2)} MB`;
+  }
+
+  // Horizontal duration bars; returns true if any timing data was rendered.
+  function renderTimeline(stages) {
+    const order = ['sourceCodeScan', 'securityScan', 'build', 'artifactScan', 'pluginTest', 'e2eTests'];
+    const rows = order
+      .map(k => stages[k])
+      .filter(st => st && typeof st.durationSeconds === 'number');
+    if (rows.length === 0) return false;
+
+    const max = Math.max(...rows.map(st => st.durationSeconds), 1);
+    document.getElementById('timeline').innerHTML = rows.map(st => {
+      const pct = Math.max(2, (st.durationSeconds / max) * 100);
+      const barCls = st.status === 'failure' ? 'bar-fail' : st.status === 'success' ? 'bar-ok' : 'bar-skip';
+      return `
+        <div class="tl-row">
+          <div class="tl-label">${st.label}</div>
+          <div class="tl-track"><div class="tl-bar ${barCls}" style="width:${pct}%"></div></div>
+          <div class="tl-time">${fmtDuration(st.durationSeconds)}</div>
+        </div>`;
+    }).join('');
+    return true;
   }
 
   function renderScanSummary(label, scan) {
     if (!scan || scan.mock) return '';
     const s = scan.summary || {};
+    const entries = [
+      { label: 'Critical', value: s.critical || 0, color: SEV_COLORS.critical },
+      { label: 'High',     value: s.high     || 0, color: SEV_COLORS.high },
+      { label: 'Medium',   value: s.medium   || 0, color: SEV_COLORS.medium },
+      { label: 'Low',      value: s.low      || 0, color: SEV_COLORS.low },
+      { label: 'Unknown',  value: s.unknown  || 0, color: SEV_COLORS.unknown },
+    ];
+    const extra = [];
+    if (scan.secrets > 0) extra.push(`<span class="sev-chip sev-critical">Secrets: ${scan.secrets}</span>`);
+    if (scan.malware > 0) extra.push(`<span class="sev-chip sev-critical">Malware: ${scan.malware}</span>`);
     return `
-      <div style="margin-bottom:16px">
-        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${label}</div>
-        <div class="severity-grid">
-          ${s.critical > 0 ? `<span class="sev-chip sev-critical">Critical: ${s.critical}</span>` : ''}
-          ${s.high     > 0 ? `<span class="sev-chip sev-high">High: ${s.high}</span>` : ''}
-          ${s.medium   > 0 ? `<span class="sev-chip sev-medium">Medium: ${s.medium}</span>` : ''}
-          ${s.low      > 0 ? `<span class="sev-chip sev-low">Low: ${s.low}</span>` : ''}
-          ${s.unknown  > 0 ? `<span class="sev-chip sev-unknown">Unknown: ${s.unknown}</span>` : ''}
-          ${!s.critical && !s.high && !s.medium && !s.low && !s.unknown
-            ? `<span class="sev-chip sev-ok">✓ No vulnerabilities</span>` : ''}
-          ${scan.secrets  > 0 ? `<span class="sev-chip sev-critical">Secrets: ${scan.secrets}</span>`  : ''}
-          ${scan.malware  > 0 ? `<span class="sev-chip sev-critical">Malware: ${scan.malware}</span>`  : ''}
-        </div>
+      <div class="scan-block">
+        <div class="scan-block-title">${label}</div>
+        ${renderDonut(entries)}
+        ${extra.length ? `<div class="severity-grid" style="margin-top:14px">${extra.join('')}</div>` : ''}
+      </div>`;
+  }
+
+  function renderNpmAudit(audit) {
+    if (!audit || !audit.metadata) return '';
+    const v = audit.metadata.vulnerabilities || {};
+    const entries = [
+      { label: 'Critical', value: v.critical || 0, color: SEV_COLORS.critical },
+      { label: 'High',     value: v.high     || 0, color: SEV_COLORS.high },
+      { label: 'Moderate', value: v.moderate || 0, color: SEV_COLORS.medium },
+      { label: 'Low',      value: v.low      || 0, color: SEV_COLORS.low },
+    ];
+    return `
+      <div class="scan-block">
+        <div class="scan-block-title">Security Scan — npm audit (e2e dependencies)</div>
+        ${renderDonut(entries)}
       </div>`;
   }
 
   async function loadReport() {
     let report = null;
     try {
-      const res = await fetch('pipeline-report.json');
+      const res = await fetch(`pipeline-report.json?_=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) report = await res.json();
     } catch { /* no report yet */ }
 
@@ -556,26 +722,43 @@
 
     // Stage statuses
     const s = report.stages || {};
-    applyStatus('status-source-scan',  'tbl-source-scan',  s.sourceCodeScan?.status);
-    applyStatus('status-build',        'tbl-build',        s.build?.status);
-    applyStatus('status-artifact-scan','tbl-artifact-scan',s.artifactScan?.status);
-    applyStatus('status-plugin-test',  'tbl-plugin-test',  s.pluginTest?.status);
-    applyStatus('status-e2e-tests',    'tbl-e2e-tests',    s.e2eTests?.status);
+    applyStatus('status-source-scan',   'tbl-source-scan',   s.sourceCodeScan?.status);
+    applyStatus('status-security-scan', 'tbl-security-scan', s.securityScan?.status);
+    applyStatus('status-build',         'tbl-build',         s.build?.status);
+    applyStatus('status-artifact-scan', 'tbl-artifact-scan', s.artifactScan?.status);
+    applyStatus('status-plugin-test',   'tbl-plugin-test',   s.pluginTest?.status);
+    applyStatus('status-e2e-tests',     'tbl-e2e-tests',     s.e2eTests?.status);
 
-    // Link MDSSC pentru source scan
-    if (report.mdsscInstance && report.sourceScanId) {
+    // Linkuri MDSSC — source + artifact scan
+    const mdsscReportLink = (scanId) => {
       const repoSegment = report.mdsscRepositoryId ? `${report.mdsscRepositoryId}/` : '';
-      const mdsscUrl = `${report.mdsscInstance}/reports/${repoSegment}${report.sourceScanId}`;
-      document.getElementById('mdssc-link-container').innerHTML =
-        `<a href="${mdsscUrl}" target="_blank" rel="noopener noreferrer"
-            style="font-size:10px;color:var(--blue);margin-top:2px;display:inline-block">
-           📄 View in MDSSC
-         </a>`;
+      const url = `${report.mdsscInstance}/reports/${repoSegment}${scanId}`;
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer"
+                 style="font-size:10px;color:var(--blue);margin-top:2px;display:inline-block">
+                📄 View in MDSSC</a>`;
+    };
+    if (report.mdsscInstance && report.sourceScanId) {
+      document.getElementById('mdssc-link-container').innerHTML = mdsscReportLink(report.sourceScanId);
+    }
+    if (report.mdsscInstance && report.artifactScanId) {
+      document.getElementById('mdssc-link-container-artifact').innerHTML = mdsscReportLink(report.artifactScanId);
+    }
+
+    // Mărime artefact .hpi
+    const buildBytes = s.build?.result?.sizeBytes;
+    if (buildBytes) {
+      document.getElementById('build-size-note').textContent = `.hpi · ${fmtBytes(buildBytes)}`;
+    }
+
+    // Durate pe stage
+    if (renderTimeline(s)) {
+      document.getElementById('timeline-card').style.display = '';
     }
 
     // Scan summaries
     const scanHTML = [
       renderScanSummary('Source Code Scan', s.sourceCodeScan?.result),
+      renderNpmAudit(s.securityScan?.result),
       renderScanSummary('Artifact Scan',    s.artifactScan?.result),
     ].filter(Boolean).join('');
     if (scanHTML) {
@@ -593,6 +776,8 @@
   }
 
   loadReport();
+  // Auto-refresh la 1 minut — preia raportul nou când rulează un build
+  setInterval(loadReport, 60000);
 </script>
 
 </body>

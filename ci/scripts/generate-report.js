@@ -62,43 +62,95 @@ if (fs.existsSync(e2eDir)) {
   }
 }
 
-const overallStatus = Object.values(stages).every(s =>
-  ['success', 'skipped'].includes(s.status)
-) ? 'success' : 'failure';
-
-// Extrage scan ID-urile din rezultatele MDSSC (câmpul ScanId sau id)
-const sourceScanId  = stages.sourceCodeScan.result?.ScanId  || stages.sourceCodeScan.result?.id  || null;
-const artifactScanId = stages.artifactScan.result?.ScanId   || stages.artifactScan.result?.id    || null;
-const mdsscInstance    = (process.env.MDSSC_INSTANCE || '').replace(/\/$/, '');
-const mdsscRepositoryId = process.env.MDSSC_REPOSITORY_ID || '';
-
-const report = {
-  generatedAt:   new Date().toISOString(),
-  overallStatus,
-  commit:  process.env.COMMIT_SHA || 'unknown',
-  branch:  process.env.BRANCH     || 'unknown',
-  repo:    process.env.REPO       || 'unknown',
-  runUrl:  process.env.RUN_URL    || '#',
-  mdsscInstance,
-  mdsscRepositoryId,
-  sourceScanId,
-  artifactScanId,
-  stages,
-};
-
-fs.writeFileSync(
-  path.join(OUT_DIR, 'pipeline-report.json'),
-  JSON.stringify(report, null, 2)
-);
-
-console.log(`\nPipeline Report — ${overallStatus.toUpperCase()}`);
-console.log('─'.repeat(50));
-for (const [, s] of Object.entries(stages)) {
-  console.log(`  ${stageEmoji(s.status)} ${s.label.padEnd(25)} ${s.status}`);
+// Mărimea artefactului .hpi (descărcat de jobul report în artifacts/)
+function fileSize(p) {
+  try { return fs.statSync(p).size; } catch { return null; }
 }
-console.log('─'.repeat(50));
-console.log(`Commit: ${report.commit.slice(0, 8)}  Branch: ${report.branch}`);
-console.log(`Report: ${path.join(OUT_DIR, 'pipeline-report.json')}\n`);
+const hpiBytes = fileSize(path.join(ARTIFACTS, 'mdssc-plugin-hpi', 'mdssc-plugin.hpi'));
+if (hpiBytes != null) {
+  stages.build.result = { ...(stages.build.result || {}), sizeBytes: hpiBytes };
+}
 
-// Raportul se generează mereu cu succes — statusul e în JSON, nu în exit code
-console.log(`\nGitHub Pages report generat.`);
+// Durata fiecărui stage — din GitHub Actions jobs API (jobul report rulează ultimul)
+async function attachDurations() {
+  const token = process.env.GITHUB_TOKEN;
+  const runId = process.env.RUN_ID;
+  const repo  = process.env.REPO;
+  if (!token || !runId || !repo) return;
+
+  // Numărul din numele jobului ("1 · Source Code Scan") → cheia stage-ului
+  const byNum = {
+    1: 'sourceCodeScan', 2: 'securityScan', 3: 'build',
+    4: 'artifactScan', 5: 'pluginTest', 6: 'e2eTests',
+  };
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs?per_page=100`,
+      { headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'mdssc-report',
+      } }
+    );
+    if (!res.ok) { console.log(`  (durate: jobs API ${res.status})`); return; }
+    const data = await res.json();
+    for (const job of data.jobs || []) {
+      const m = /^\s*(\d+)/.exec(job.name || '');
+      const key = m && byNum[Number(m[1])];
+      if (!key || !stages[key] || !job.started_at || !job.completed_at) continue;
+      const secs = Math.round((new Date(job.completed_at) - new Date(job.started_at)) / 1000);
+      if (secs >= 0) stages[key].durationSeconds = secs;
+    }
+  } catch (e) {
+    console.log(`  (durate indisponibile: ${e.message})`);
+  }
+}
+
+async function main() {
+  await attachDurations();
+
+  const overallStatus = Object.values(stages).every(s =>
+    ['success', 'skipped'].includes(s.status)
+  ) ? 'success' : 'failure';
+
+  // Extrage scan ID-urile din rezultatele MDSSC (câmpul ScanId sau id)
+  const sourceScanId   = stages.sourceCodeScan.result?.ScanId || stages.sourceCodeScan.result?.id || null;
+  const artifactScanId = stages.artifactScan.result?.ScanId   || stages.artifactScan.result?.id   || null;
+  const mdsscInstance     = (process.env.MDSSC_INSTANCE || '').replace(/\/$/, '');
+  const mdsscRepositoryId = process.env.MDSSC_REPOSITORY_ID || '';
+
+  const report = {
+    generatedAt:   new Date().toISOString(),
+    overallStatus,
+    commit:  process.env.COMMIT_SHA || 'unknown',
+    branch:  process.env.BRANCH     || 'unknown',
+    repo:    process.env.REPO       || 'unknown',
+    runUrl:  process.env.RUN_URL    || '#',
+    mdsscInstance,
+    mdsscRepositoryId,
+    sourceScanId,
+    artifactScanId,
+    stages,
+  };
+
+  fs.writeFileSync(
+    path.join(OUT_DIR, 'pipeline-report.json'),
+    JSON.stringify(report, null, 2)
+  );
+
+  console.log(`\nPipeline Report — ${overallStatus.toUpperCase()}`);
+  console.log('─'.repeat(50));
+  for (const [, s] of Object.entries(stages)) {
+    const dur = typeof s.durationSeconds === 'number' ? `  (${s.durationSeconds}s)` : '';
+    console.log(`  ${stageEmoji(s.status)} ${s.label.padEnd(25)} ${s.status}${dur}`);
+  }
+  console.log('─'.repeat(50));
+  console.log(`Commit: ${report.commit.slice(0, 8)}  Branch: ${report.branch}`);
+  console.log(`Report: ${path.join(OUT_DIR, 'pipeline-report.json')}\n`);
+
+  // Raportul se generează mereu cu succes — statusul e în JSON, nu în exit code
+  console.log(`\nGitHub Pages report generat.`);
+}
+
+main();
