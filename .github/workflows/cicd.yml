@@ -464,11 +464,12 @@ jobs:
   # Release Plugin (.hpi) pe GitHub — opțional
   # Se activează DOAR dacă variabila de repo MDSSC_RELEASE == 'true', la push pe main.
   # Tag: vYYYY.MM.DD-<run_number> (mereu unic).
-  # needs: build ⇒ rulează doar dacă scanările au trecut (build depinde de source-scan).
+  # needs: artifact-scan ⇒ release DOAR după ce scanarea artefactului a trecut
+  # (artifact-scan depinde de build, care depinde de source-scan).
   # ─────────────────────────────────────────────────────────────────────────────
   release:
     name: "Release Plugin (.hpi)"
-    needs: build
+    needs: artifact-scan
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.MDSSC_RELEASE == 'true' }}
     runs-on: ubuntu-latest
     permissions:

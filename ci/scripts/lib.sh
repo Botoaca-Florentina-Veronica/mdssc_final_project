@@ -193,10 +193,6 @@ mdssc_poll_overview() {
     echo "::group::Poll $scan_id (timeout: ${MDSSC_SCAN_TIMEOUT}s)"
     local elapsed=0
     local first_iter=true
-    # După Completed, analiza pachetelor (SBOM) mai poate rula câteva secunde —
-    # așteptăm până apar rezultatele reale, max 90s grație.
-    local done_since=-1
-    local grace=90
 
     while [[ $elapsed -lt $MDSSC_SCAN_TIMEOUT ]]; do
         # Încearcă /overview; dacă pică (404 sau alt HTTP error), cade pe /scans/{id}
@@ -219,33 +215,12 @@ mdssc_poll_overview() {
             .status // .Status // .state // .State // empty
         ' 2>/dev/null || true)
 
-        # Rezultate populate? (vulnerabilități > 0 sau pachete enumerate)
-        local has_results
-        has_results=$(echo "$MDSSC_OVERVIEW" | jq -r '
-            ((.ScanInformation.VulnerabilityIssues // {}) | (.critical+.high+.medium+.low+.unknown) // 0) as $v
-            | (.Package.TotalPackages // 0) as $p
-            | if ($v > 0 or $p > 0) then "yes" else "no" end
-        ' 2>/dev/null || echo "no")
-
         [[ -z "$status" ]] && status="Running"
-        echo "  [${elapsed}s] $status (results: ${has_results})"
-
+        echo "  [${elapsed}s] $status"
+        # MDSSC folosește "Running" (nu "IN_PROGRESS") ca status activ
         case "$status" in
             Running|RUNNING|IN_PROGRESS|Scanning|SCANNING|Pending|PENDING) ;;
-            *)
-                # Stare terminală. Dacă rezultatele sunt gata → ieșim.
-                if [[ "$has_results" == "yes" ]]; then
-                    break
-                fi
-                # Completat dar analiza încă rulează → așteptăm grace period.
-                if [[ $done_since -lt 0 ]]; then
-                    done_since=$elapsed
-                    echo "  Scan complet — aștept finalizarea analizei pachetelor..."
-                elif [[ $((elapsed - done_since)) -ge $grace ]]; then
-                    echo "  Analiză finalizată — nicio vulnerabilitate detectată."
-                    break
-                fi
-                ;;
+            *) break ;;
         esac
 
         sleep "$MDSSC_POLL_INTERVAL"
