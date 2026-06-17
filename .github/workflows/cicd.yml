@@ -4,6 +4,14 @@ on:
   push:
   pull_request:
 
+  # ── Scanare zilnică programată ───────────────────────────────────────────────
+  # Rulează zilnic la 06:00 UTC (09:00 România vara / 08:00 iarna — cron e în UTC).
+  # Se activează DOAR dacă variabila de repo MDSSC_DAILY_SCAN == 'true'
+  # (GitHub → Settings → Secrets and variables → Actions → Variables).
+  # La rulare programată se execută doar Source Scan + Artifact Scan.
+  schedule:
+    - cron: '0 6 * * *'
+
   # ── Rulare manuală cu parametri personalizați ────────────────────────────────
   # Accesează GitHub → Actions → CI/CD → Run workflow → completează câmpurile.
   # Valorile introduse aici suprascriu ci/mdssc-params.env.
@@ -101,6 +109,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   source-scan:
     name: "1 · Source Code Scan"
+    # Scanare programată: doar dacă MDSSC_DAILY_SCAN == 'true'. Push/PR: mereu.
+    if: ${{ github.event_name != 'schedule' || vars.MDSSC_DAILY_SCAN == 'true' }}
     runs-on: ubuntu-latest
     outputs:
       passed:  ${{ steps.scan.outputs.passed }}
@@ -143,6 +153,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   security-scan:
     name: "2 · Security Scan"
+    if: ${{ github.event_name != 'schedule' || vars.MDSSC_DAILY_SCAN == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -186,6 +197,7 @@ jobs:
   build:
     name: "3 · Build Plugin (.hpi)"
     needs: [source-scan, security-scan]
+    if: ${{ github.event_name != 'schedule' || vars.MDSSC_DAILY_SCAN == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -225,6 +237,7 @@ jobs:
   artifact-scan:
     name: "4 · Artifact Scan (.hpi)"
     needs: build
+    if: ${{ github.event_name != 'schedule' || vars.MDSSC_DAILY_SCAN == 'true' }}
     runs-on: ubuntu-latest
     outputs:
       passed:  ${{ steps.scan.outputs.passed }}
@@ -272,6 +285,8 @@ jobs:
   plugin-test:
     name: "5 · Plugin Integration Test (Jenkins)"
     needs: artifact-scan
+    # Nu rulează la scanarea zilnică programată (doar push/PR/manual).
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -316,6 +331,8 @@ jobs:
   e2e-tests:
     name: "6 · E2E Tests"
     needs: [build, artifact-scan]
+    # Nu rulează la scanarea zilnică programată (doar push/PR/manual).
+    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -374,7 +391,8 @@ jobs:
     name: "7 · Report"
     needs: [source-scan, security-scan, build, artifact-scan, plugin-test, e2e-tests]
     runs-on: ubuntu-latest
-    if: always()
+    # Nu rulează la scanarea zilnică programată (doar push/PR/manual).
+    if: ${{ always() && github.event_name != 'schedule' }}
     steps:
       - uses: actions/checkout@v4
 
