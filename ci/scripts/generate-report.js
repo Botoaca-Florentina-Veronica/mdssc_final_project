@@ -71,6 +71,37 @@ if (hpiBytes != null) {
   stages.build.result = { ...(stages.build.result || {}), sizeBytes: hpiBytes };
 }
 
+// Normalizează rezultatul MDSSC într-o formă constantă pentru frontend.
+// Răspunsul real ține vulnerabilitățile în ScanInformation.VulnerabilityIssues
+// (sau VulnerabilityIssues), iar mock-ul în summary — le unificăm aici.
+function normalizeScan(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const c = (raw.ScanInformation && raw.ScanInformation.VulnerabilityIssues)
+    || raw.VulnerabilityIssues || raw.vulnerabilityIssues || raw.summary || {};
+  const sev = (...keys) => {
+    for (const k of keys) if (c[k] != null) return Number(c[k]) || 0;
+    return 0;
+  };
+  const si = raw.ScanInformation || {};
+  const malware = si.Malware === true ? 1 : (Number(si.InfectedFiles  ?? raw.malware ?? 0) || 0);
+  const secrets = si.Secret  === true ? 1 : (Number(si.FilesWithSecrets ?? raw.secrets ?? 0) || 0);
+  return {
+    mock: raw.mock === true,
+    ScanId: raw.ScanId || raw.id || raw.Id || null,
+    summary: {
+      critical: sev('critical', 'Critical'),
+      high:     sev('high', 'High'),
+      medium:   sev('medium', 'Medium'),
+      low:      sev('low', 'Low'),
+      unknown:  sev('unknown', 'Unknown'),
+    },
+    secrets,
+    malware,
+  };
+}
+stages.sourceCodeScan.result = normalizeScan(stages.sourceCodeScan.result);
+stages.artifactScan.result   = normalizeScan(stages.artifactScan.result);
+
 // Durata fiecărui stage — din GitHub Actions jobs API (jobul report rulează ultimul)
 async function attachDurations() {
   const token = process.env.GITHUB_TOKEN;
