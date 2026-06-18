@@ -196,13 +196,17 @@ public class JenkinsIntegrationTest {
 
         FreeStyleProject project = jenkins.createFreeStyleProject();
 
-        // Create a 2MB file directly in workspace using Java
-        project.getBuildersList().add(new hudson.tasks.BatchFile(
-            "python -c \"open('bigfile.hpi','wb').write(b'A'*2097152)\" || " +
-            "python3 -c \"open('bigfile.hpi','wb').write(b'A'*2097152)\""
-        ));
+        // Run a first empty build to initialize the workspace
+        jenkins.buildAndAssertSuccess(project);
 
-        // Scan with 1MB limit — should trigger UNSTABLE
+        // Create a 2MB file directly in workspace using Java
+        java.io.File bigFile = new java.io.File(
+            project.getSomeWorkspace().getRemote(), "bigfile.hpi");
+        byte[] data = new byte[2 * 1024 * 1024];
+        java.util.Arrays.fill(data, (byte) 'A');
+        java.nio.file.Files.write(bigFile.toPath(), data);
+
+        // Now add scan step with 1MB limit — should trigger UNSTABLE
         project.getBuildersList().add(new ArtifactScanStep(
             MDSSC_URL,
             CRED_ID,
