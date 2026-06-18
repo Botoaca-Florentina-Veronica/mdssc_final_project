@@ -49,6 +49,11 @@ const stages = {
     status: process.env.E2E_STATUS || 'skipped',
     result: null,
   },
+  release: {
+    label: 'Release Plugin (.hpi)',
+    status: process.env.RELEASE_STATUS || 'skipped',
+    result: null,
+  },
 };
 
 // Load E2E JSON results if present
@@ -128,7 +133,8 @@ async function attachDurations() {
     const data = await res.json();
     for (const job of data.jobs || []) {
       const m = /^\s*(\d+)/.exec(job.name || '');
-      const key = m && byNum[Number(m[1])];
+      let key = m && byNum[Number(m[1])];
+      if (!key && /release/i.test(job.name || '')) key = 'release';
       if (!key || !stages[key] || !job.started_at || !job.completed_at) continue;
       const secs = Math.round((new Date(job.completed_at) - new Date(job.started_at)) / 1000);
       if (secs >= 0) stages[key].durationSeconds = secs;

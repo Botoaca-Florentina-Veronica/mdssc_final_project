@@ -389,7 +389,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   report:
     name: "7 · Report"
-    needs: [source-scan, security-scan, build, artifact-scan, plugin-test, e2e-tests]
+    needs: [source-scan, security-scan, build, artifact-scan, plugin-test, e2e-tests, release]
     runs-on: ubuntu-latest
     # Nu rulează la scanarea zilnică programată (doar push/PR/manual).
     if: ${{ always() && github.event_name != 'schedule' }}
@@ -414,6 +414,7 @@ jobs:
           ARTIFACT_SCAN_STATUS:  ${{ needs.artifact-scan.result }}
           PLUGIN_TEST_STATUS:    ${{ needs.plugin-test.result }}
           E2E_STATUS:            ${{ needs.e2e-tests.result }}
+          RELEASE_STATUS:        ${{ needs.release.result }}
           RUN_URL:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID:     ${{ github.run_id }}
           GITHUB_TOKEN: ${{ github.token }}

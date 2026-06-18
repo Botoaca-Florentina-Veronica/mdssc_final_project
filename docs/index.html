@@ -83,8 +83,8 @@
     .arrow + .parallel-group::before {
       content: '';
       position: absolute;
-      top: 25%;
-      bottom: 25%;
+      top: 37px;      /* ≈ half a node's height → joins first & last node centers, any count */
+      bottom: 37px;
       width: 2px;
       background: var(--border);
     }
@@ -346,6 +346,16 @@
           </div>
         </div>
 
+        <div class="stage">
+          <div class="stage-box" id="box-release">
+            <span class="node-icon">🚀</span>
+            <div class="node-body">
+              <div class="node-head"><span class="node-name">Release</span><span class="node-sub">GitHub Release</span></div>
+              <span id="status-release" class="stage-status status-skipped">optional</span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <div class="arrow"></div>
@@ -417,6 +427,13 @@
           <td>Playwright + mock server</td>
           <td>Threshold · Secrets · Malware · Bad-input</td>
           <td><span id="tbl-e2e-tests" class="stage-status status-skipped">—</span></td>
+        </tr>
+        <tr>
+          <td>opt</td>
+          <td><strong>Release Plugin</strong></td>
+          <td>GitHub Releases</td>
+          <td>Publishes <code>.hpi</code> — gated by <code>MDSSC_RELEASE</code></td>
+          <td><span id="tbl-release" class="stage-status status-skipped">—</span></td>
         </tr>
         <tr>
           <td>7</td>
@@ -637,7 +654,7 @@
 
   // Horizontal duration bars; returns true if any timing data was rendered.
   function renderTimeline(stages) {
-    const order = ['sourceCodeScan', 'securityScan', 'build', 'artifactScan', 'pluginTest', 'e2eTests'];
+    const order = ['sourceCodeScan', 'securityScan', 'build', 'artifactScan', 'pluginTest', 'e2eTests', 'release'];
     const rows = order
       .map(k => stages[k])
       .filter(st => st && typeof st.durationSeconds === 'number');
@@ -728,6 +745,7 @@
     applyStatus('status-artifact-scan', 'tbl-artifact-scan', s.artifactScan?.status);
     applyStatus('status-plugin-test',   'tbl-plugin-test',   s.pluginTest?.status);
     applyStatus('status-e2e-tests',     'tbl-e2e-tests',     s.e2eTests?.status);
+    applyStatus('status-release',       'tbl-release',       s.release?.status);
 
     // Linkuri MDSSC — source + artifact scan
     const mdsscReportLink = (scanId) => {
