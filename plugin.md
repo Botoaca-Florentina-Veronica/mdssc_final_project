@@ -23,9 +23,24 @@ Both steps **block the build** if the scan results exceed the configured thresho
 ```
 Jenkins Plugin
     │
-    ├─ 1. GET  /workflows/{id}          → resolve storageId + repositoryId
-    ├─ 2. POST /scans                   → start scan (MDSSC pulls from GitHub)
-    └─ 3. GET  /scans/{id}/overview     → poll every 10s until Completed
+    ├─ 1. GET  /health  (or /version)         → health check
+    │
+    ├─ 2. Resolve storageId + repositoryId
+    │       ├─ PRIMARY:   taken directly from UI fields (Connection + Repository)
+    │       └─ FALLBACK:  if UI fields are empty but workflowId is set (e.g. CI/CD):
+    │                       GET /workflows/{workflowId}
+    │                           → extracts storageId + repositoryId
+    │
+    ├─ 3. GET  https://api.github.com/repositories/{id}
+    │                                         → resolve friendly repo name (for report)
+    │
+    ├─ 4. POST /scans                         → start scan (MDSSC pulls from GitHub)
+    │         body: { storageId, repositoryId,
+    │                 repositoryReferences: [branch],
+    │                 scanType: 0, workflowId?, repositoryName? }
+    │
+    └─ 5. GET  /scans/{id}/overview           → poll every 10s until Completed
+              (fallback: GET /scans/{id})
               └─ evaluate results → PASS or FAIL build
 ```
 
@@ -33,8 +48,15 @@ Jenkins Plugin
 ```
 Jenkins Plugin
     │
-    ├─ 1. POST /scans/direct            → upload file (multipart)
-    └─ 2. GET  /scans/{id}/overview     → poll every 10s until Completed
+    ├─ 1. GET  /health  (or /version)         → health check
+    │
+    ├─ 2. POST /scans/direct                  → upload file + start scan
+    │         body: multipart/form-data
+    │               part "workflowId" (if set)
+    │               part "file" (binary content)
+    │
+    └─ 3. GET  /scans/{id}/overview           → poll every 10s until Completed
+              (fallback: GET /scans/{id})
               └─ evaluate results → PASS or FAIL build
 ```
 
