@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# ci/scripts/lib.sh — funcții comune MDSSC
-# Echivalent bash al mdsscAdvanced.groovy din Jenkinsfile.
-# Sourced de mdssc-source-scan.sh și mdssc-artifact-scan.sh.
+# ci/scripts/lib.sh — common MDSSC functions
+# Bash equivalent of mdsscAdvanced.groovy from the Jenkinsfile.
+# Sourced by mdssc-source-scan.sh and mdssc-artifact-scan.sh.
 #
-# Variabile de stare setate de funcții (read de caller):
+# State variables set by the functions (read by the caller):
 #   MDSSC_WF_ID, MDSSC_WF_STORAGE_ID, MDSSC_WF_REPOSITORY_ID
 #   MDSSC_OVERVIEW, MDSSC_SCAN_RESULT
 
-# ── Variabile cu valori implicite ─────────────────────────────────────────────
+# ── Variables with default values ─────────────────────────────────────────────
 MDSSC_INSTANCE="${MDSSC_INSTANCE:-}"
 MDSSC_INSTANCE="${MDSSC_INSTANCE%/}"   # strip trailing slash
 MDSSC_API_KEY="${MDSSC_API_KEY:-}"
@@ -22,7 +22,7 @@ MDSSC_MAX_UPLOAD_MB="${MDSSC_MAX_UPLOAD_MB:-100}"
 MDSSC_SKIP_LARGE_ARTIFACTS="${MDSSC_SKIP_LARGE_ARTIFACTS:-true}"
 MDSSC_INDIRECT_SCAN="${MDSSC_INDIRECT_SCAN:-false}"
 
-# Stare internă — setată de funcții
+# Internal state — set by the functions
 MDSSC_WF_ID=""
 MDSSC_WF_STORAGE_ID=""
 MDSSC_WF_REPOSITORY_ID=""
@@ -31,19 +31,19 @@ MDSSC_SCAN_RESULT=""
 
 mkdir -p scan-results
 
-# ── Helper intern curl ────────────────────────────────────────────────────────
+# ── Internal curl helper ──────────────────────────────────────────────────────
 _curl() {
     curl -sf -H "${MDSSC_API_KEY_HEADER}: ${MDSSC_API_KEY}" "$@"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_require_env
-#   Verifică dacă MDSSC_INSTANCE și MDSSC_API_KEY sunt setate.
-#   Returnează 1 (ne-fatal) dacă lipsesc — caller-ul decide fallback.
+#   Checks whether MDSSC_INSTANCE and MDSSC_API_KEY are set.
+#   Returns 1 (non-fatal) if missing — the caller decides on a fallback.
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_require_env() {
     if [[ -z "$MDSSC_INSTANCE" || -z "$MDSSC_API_KEY" ]]; then
-        echo "::warning::MDSSC_INSTANCE / MDSSC_API_KEY nu sunt setate"
+        echo "::warning::MDSSC_INSTANCE / MDSSC_API_KEY are not set"
         return 1
     fi
     return 0
@@ -51,9 +51,9 @@ mdssc_require_env() {
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_health
-#   GET /version (primar, ca în scan-source.sh original)
-#   GET /api/v1/health (fallback conform README)
-#   Returnează 1 dacă instanța nu e accesibilă.
+#   GET /version (primary, as in the original scan-source.sh)
+#   GET /api/v1/health (fallback per README)
+#   Returns 1 if the instance is not reachable.
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_health() {
     echo "::group::MDSSC health check"
@@ -76,20 +76,20 @@ mdssc_health() {
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_resolve_workflow
-#   GET /api/v1/workflows       — auto-detectează dacă MDSSC_WORKFLOW_ID e gol
-#   GET /api/v1/workflows/{id}  — preia storageId + repositoryId
-#   Setează: MDSSC_WF_ID, MDSSC_WF_STORAGE_ID, MDSSC_WF_REPOSITORY_ID
+#   GET /api/v1/workflows       — auto-detect if MDSSC_WORKFLOW_ID is empty
+#   GET /api/v1/workflows/{id}  — fetch storageId + repositoryId
+#   Sets: MDSSC_WF_ID, MDSSC_WF_STORAGE_ID, MDSSC_WF_REPOSITORY_ID
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_resolve_workflow() {
-    echo "::group::Rezolvare workflow"
+    echo "::group::Resolving workflow"
     MDSSC_WF_ID="$MDSSC_WORKFLOW_ID"
 
     if [[ -z "$MDSSC_WF_ID" ]]; then
-        echo "MDSSC_WORKFLOW_ID negăsit — auto-detectare workflow implicit..."
+        echo "MDSSC_WORKFLOW_ID not found — auto-detecting default workflow..."
         local list
         list=$(_curl "${MDSSC_INSTANCE}/api/v1/workflows") || true
         MDSSC_WF_ID=$(echo "$list" | jq -r '.[0].id // ""')
-        echo "Workflow auto-detectat: ${MDSSC_WF_ID:-<niciunul>}"
+        echo "Auto-detected workflow: ${MDSSC_WF_ID:-<none>}"
     fi
 
     if [[ -n "$MDSSC_WF_ID" ]]; then
@@ -99,26 +99,26 @@ mdssc_resolve_workflow() {
         MDSSC_WF_REPOSITORY_ID=$(echo "$meta" | jq -r '.repositoryId // ""')
     fi
 
-    echo "Workflow ID    : ${MDSSC_WF_ID:-<niciunul>}"
-    echo "Storage ID     : ${MDSSC_WF_STORAGE_ID:-<niciunul>}"
-    echo "Repository ID  : ${MDSSC_WF_REPOSITORY_ID:-<niciunul>}"
+    echo "Workflow ID    : ${MDSSC_WF_ID:-<none>}"
+    echo "Storage ID     : ${MDSSC_WF_STORAGE_ID:-<none>}"
+    echo "Repository ID  : ${MDSSC_WF_REPOSITORY_ID:-<none>}"
     echo "::endgroup::"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_scan_direct <file>
-#   POST /api/v1/scans/direct — upload direct al unui fișier
-#   Returnează scan ID prin stdout.
+#   POST /api/v1/scans/direct — direct upload of a file
+#   Returns the scan ID via stdout.
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_scan_direct() {
     local file="$1"
-    # Toate mesajele → stderr, doar scan ID → stdout (capturat de caller cu $(...))
-    echo "::group::Scan direct: $(basename "$file") ($(du -sh "$file" | cut -f1))" >&2
+    # All messages → stderr, only the scan ID → stdout (captured by the caller via $(...))
+    echo "::group::Direct scan: $(basename "$file") ($(du -sh "$file" | cut -f1))" >&2
 
     local wf_arg=""
     [[ -n "${MDSSC_WF_ID:-}" ]] && wf_arg="-F workflowId=${MDSSC_WF_ID}"
 
-    # Temp file: body și status se capturează separat — fără riscul de a mixa cele două
+    # Temp file: body and status are captured separately — no risk of mixing the two
     local tmp_resp http_status resp id
     tmp_resp=$(mktemp)
     http_status=$(curl -s \
@@ -133,38 +133,38 @@ mdssc_scan_direct() {
     rm -f "$tmp_resp"
 
     echo "HTTP Status : $http_status" >&2
-    echo "Răspuns     : $resp"        >&2
+    echo "Response    : $resp"        >&2
     echo "::endgroup::"               >&2
 
-    # Erori vizibile în log (în afara grupului colapsat)
+    # Errors visible in the log (outside the collapsed group)
     if [[ "$http_status" != 2* ]]; then
-        echo "::error::MDSSC upload eșuat — HTTP ${http_status} — $(echo "$resp" | head -c 300)"
+        echo "::error::MDSSC upload failed — HTTP ${http_status} — $(echo "$resp" | head -c 300)"
         return 1
     fi
 
-    # MDSSC returnează {"ScanIds":["<uuid>"],...} — nu {"id":"<uuid>"}
+    # MDSSC returns {"ScanIds":["<uuid>"],...} — not {"id":"<uuid>"}
     id=$(echo "$resp" | jq -r '(.ScanIds[0] // .id) // empty' 2>/dev/null || true)
     if [[ -z "$id" || "$id" == "null" ]]; then
-        echo "::error::MDSSC — ID scan invalid — răspuns: $(echo "$resp" | head -c 300)"
+        echo "::error::MDSSC — invalid scan ID — response: $(echo "$resp" | head -c 300)"
         return 1
     fi
 
-    echo "::notice::MDSSC scan pornit — ID: $id" >&2
+    echo "::notice::MDSSC scan started — ID: $id" >&2
     echo "$id"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_scan_indirect
-#   POST /api/v1/scans — scan indirect prin referință branch (MDSSC trage din GitHub)
-#   Returnează scan ID prin stdout.
+#   POST /api/v1/scans — indirect scan via branch reference (MDSSC pulls from GitHub)
+#   Returns the scan ID via stdout.
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_scan_indirect() {
     local branch="${GITHUB_REF_NAME:-main}"
     [[ "$branch" == "HEAD" ]] && branch="main"
     local label="${GITHUB_REPOSITORY:-repo}-${branch}"
 
-    # Toate mesajele → stderr, doar scan ID → stdout
-    echo "::group::Scan indirect repo (branch: $branch)" >&2
+    # All messages → stderr, only the scan ID → stdout
+    echo "::group::Indirect repo scan (branch: $branch)" >&2
     local payload resp id
     payload=$(jq -n \
         --arg wf  "$MDSSC_WF_ID" \
@@ -185,8 +185,8 @@ mdssc_scan_indirect() {
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_poll_overview <scan_id>
-#   GET /api/v1/scans/{id}/overview — poll până status != IN_PROGRESS
-#   Setează: MDSSC_OVERVIEW
+#   GET /api/v1/scans/{id}/overview — poll until status != IN_PROGRESS
+#   Sets: MDSSC_OVERVIEW
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_poll_overview() {
     local scan_id="$1"
@@ -195,19 +195,19 @@ mdssc_poll_overview() {
     local first_iter=true
 
     while [[ $elapsed -lt $MDSSC_SCAN_TIMEOUT ]]; do
-        # Încearcă /overview; dacă pică (404 sau alt HTTP error), cade pe /scans/{id}
+        # Try /overview; if it fails (404 or other HTTP error), fall back to /scans/{id}
         MDSSC_OVERVIEW=$(_curl "${MDSSC_INSTANCE}/api/v1/scans/${scan_id}/overview") || \
             MDSSC_OVERVIEW=$(_curl "${MDSSC_INSTANCE}/api/v1/scans/${scan_id}")      || true
 
-        # Prima iterație: loghează răspunsul brut pentru debug
+        # First iteration: log the raw response for debugging
         if [[ "$first_iter" == "true" ]]; then
-            echo "  [debug] răspuns brut: ${MDSSC_OVERVIEW:0:300}"
+            echo "  [debug] raw response: ${MDSSC_OVERVIEW:0:300}"
             first_iter=false
         fi
 
         local status
-        # Extrage starea — identic cu Jenkins _overviewParserScript
-        # (ScanStatus/scanStatus e un obiect nested, nu un string direct)
+        # Extract the state — identical to Jenkins _overviewParserScript
+        # (ScanStatus/scanStatus is a nested object, not a plain string)
         status=$(echo "$MDSSC_OVERVIEW" | jq -r '
             .ScanningState // .scanningState //
             (.scanStatus  |  if type=="object" then .scanningState // .ScanningState else . end) //
@@ -217,7 +217,7 @@ mdssc_poll_overview() {
 
         [[ -z "$status" ]] && status="Running"
         echo "  [${elapsed}s] $status"
-        # MDSSC folosește "Running" (nu "IN_PROGRESS") ca status activ
+        # MDSSC uses "Running" (not "IN_PROGRESS") as the active status
         case "$status" in
             Running|RUNNING|IN_PROGRESS|Scanning|SCANNING|Pending|PENDING) ;;
             *) break ;;
@@ -231,57 +231,57 @@ mdssc_poll_overview() {
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_scan_details <scan_id> [out_file]
-#   GET /api/v1/scans/{id} — rezultat complet
-#   Setează: MDSSC_SCAN_RESULT | Scrie în out_file
+#   GET /api/v1/scans/{id} — full result
+#   Sets: MDSSC_SCAN_RESULT | Writes to out_file
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_scan_details() {
     local scan_id="$1"
     local out_file="${2:-scan-results/scan-${scan_id}.json}"
-    echo "::group::Detalii scan: $scan_id"
+    echo "::group::Scan details: $scan_id"
     MDSSC_SCAN_RESULT=$(_curl "${MDSSC_INSTANCE}/api/v1/scans/${scan_id}")
     echo "$MDSSC_SCAN_RESULT" | jq '.' > "$out_file"
-    echo "Salvat: $out_file"
+    echo "Saved: $out_file"
     echo "::endgroup::"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_export_reports <scan_id>
 #   GET /export/{id}/spdx|cyclonedx|pdf|csv
-#   Export SBOM și rapoarte în scan-results/
+#   Export SBOM and reports into scan-results/
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_export_reports() {
     local scan_id="$1"
-    echo "::group::Export rapoarte SBOM pentru $scan_id"
+    echo "::group::Exporting SBOM reports for $scan_id"
     local out_dir="scan-results"
 
     for fmt in spdx cyclonedx csv; do
         _curl "${MDSSC_INSTANCE}/export/${scan_id}/${fmt}" \
             -o "${out_dir}/${scan_id}-${fmt}.json" 2>/dev/null \
             && echo "  ✓ $fmt → ${out_dir}/${scan_id}-${fmt}.json" \
-            || echo "  ⚠ $fmt export indisponibil"
+            || echo "  ⚠ $fmt export unavailable"
     done
 
     _curl "${MDSSC_INSTANCE}/export/${scan_id}/pdf" \
         -o "${out_dir}/${scan_id}-report.pdf" 2>/dev/null \
         && echo "  ✓ pdf → ${out_dir}/${scan_id}-report.pdf" \
-        || echo "  ⚠ pdf export indisponibil"
+        || echo "  ⚠ pdf export unavailable"
 
     echo "::endgroup::"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mdssc_evaluate <label>
-#   Aplică gate-ul de threshold pe MDSSC_SCAN_RESULT.
-#   Scrie passed=true/false în GITHUB_OUTPUT.
-#   Returnează 1 dacă scan-ul a picat.
+#   Applies the threshold gate on MDSSC_SCAN_RESULT.
+#   Writes passed=true/false to GITHUB_OUTPUT.
+#   Returns 1 if the scan failed.
 # ─────────────────────────────────────────────────────────────────────────────
 mdssc_evaluate() {
     local label="${1:-Scan}"
     local result="${MDSSC_SCAN_RESULT:-}"
 
-    # Dacă MDSSC_SCAN_RESULT e invalid, folosi MDSSC_OVERVIEW ca fallback
+    # If MDSSC_SCAN_RESULT is invalid, use MDSSC_OVERVIEW as a fallback
     if ! echo "$result" | jq '.' > /dev/null 2>&1; then
-        echo "::warning::$label — MDSSC_SCAN_RESULT invalid, folosesc MDSSC_OVERVIEW"
+        echo "::warning::$label — MDSSC_SCAN_RESULT invalid, using MDSSC_OVERVIEW"
         result="${MDSSC_OVERVIEW:-}"
     fi
     if ! echo "$result" | jq '.' > /dev/null 2>&1; then
@@ -306,13 +306,13 @@ mdssc_evaluate() {
         (.ScanInformation.VulnerabilityIssues.unknown //
          .VulnerabilityIssues.unknown // .summary.unknown // 0)' 2>/dev/null || echo 0)
 
-    # Malware/Secret sunt boolean în ScanInformation
+    # Malware/Secret are booleans in ScanInformation
     local malware_raw secrets_raw
     malware_raw=$(echo "$result" | jq -r '.ScanInformation.Malware // false' 2>/dev/null || echo false)
     secrets_raw=$(echo "$result" | jq -r '.ScanInformation.Secret  // false' 2>/dev/null || echo false)
     malware=$([[ "$malware_raw" == "true" ]] && echo 1 || echo 0)
     secrets=$([[ "$secrets_raw" == "true" ]] && echo 1 || echo 0)
-    # Fallback la câmpuri int dacă boolean nu există
+    # Fall back to int fields if the boolean does not exist
     [[ $malware -eq 0 ]] && malware=$(echo "$result" | jq -r '(.InfectedFiles // .malware // 0)' 2>/dev/null || echo 0)
     [[ $secrets -eq 0 ]] && secrets=$(echo "$result" | jq -r '(.FilesWithSecrets // .secrets // 0)' 2>/dev/null || echo 0)
 
@@ -322,7 +322,7 @@ mdssc_evaluate() {
 
     echo ""
     echo "=========================================="
-    echo "   $label — RAPORT FINAL"
+    echo "   $label — FINAL REPORT"
     echo "=========================================="
     echo "  VULNERABILITIES:"
     echo "  Critical         : $critical"
@@ -352,11 +352,11 @@ mdssc_evaluate() {
     [[ "$FAIL_ON_MALWARE" == "true" && $malware -gt 0 ]] && failed=true
 
     if [[ "$failed" == "true" ]]; then
-        echo "::error::$label PICAT — rezultate depășesc threshold-ul configurat"
+        echo "::error::$label FAILED — results exceed the configured threshold"
         echo "passed=false" >> "$GITHUB_OUTPUT"
         return 1
     fi
 
     echo "passed=true" >> "$GITHUB_OUTPUT"
-    echo "$label TRECUT"
+    echo "$label PASSED"
 }

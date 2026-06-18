@@ -2,19 +2,19 @@
 #
 # ci/jenkins/run-jenkins-dev.sh
 # ─────────────────────────────────────────────────────────────────────────────
-# Pornește Jenkins LOCAL cu plugin-ul MDSSC instalat.
-# Containerul rămâne activ — accesezi UI-ul la http://localhost:8080
+# Starts Jenkins LOCALLY with the MDSSC plugin installed.
+# The container stays running — access the UI at http://localhost:8080
 #
-# Utilizare:
+# Usage:
 #   export MDSSC_INSTANCE="http://35.x.x.x"
-#   export MDSSC_API_KEY="cheia_ta"
+#   export MDSSC_API_KEY="your_key"
 #   bash ci/jenkins/run-jenkins-dev.sh
 #
-# Credențiale Jenkins UI:
+# Jenkins UI credentials:
 #   User: admin
-#   Parolă: admin123
+#   Password: admin123
 #
-# Oprire:
+# Stop:
 #   docker stop jenkins-mdssc-dev
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -28,19 +28,19 @@ PORT=8080
 echo "=========================================="
 echo "  MDSSC Jenkins Dev Instance"
 echo "  UI: http://localhost:${PORT}"
-echo "  User: admin / Parolă: admin123"
+echo "  User: admin / Password: admin123"
 echo "=========================================="
 
-# Verificare prerequisite
+# Validate prerequisites
 [[ -f "$HPI_FILE" ]] || {
-    echo "ERROR: .hpi nu există la: ${HPI_FILE}"
-    echo "Rulează mai întâi: cd plugin && mvn clean package -DskipTests"
+    echo "ERROR: .hpi does not exist at: ${HPI_FILE}"
+    echo "Run first: cd plugin && mvn clean package -DskipTests"
     exit 1
 }
 
-# Oprire container existent (dacă există)
+# Stop existing container (if any)
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
-    echo "[dev] Oprire container existent ${CONTAINER}..."
+    echo "[dev] Stopping existing container ${CONTAINER}..."
     docker stop "$CONTAINER" 2>/dev/null || true
     docker rm   "$CONTAINER" 2>/dev/null || true
 fi
@@ -55,7 +55,7 @@ jcurl() {
 
 # ── 1. Start Jenkins ──────────────────────────────────────────────────────────
 echo ""
-echo "[1/4] Pornire Jenkins..."
+echo "[1/4] Starting Jenkins..."
 docker run -d \
     --name "$CONTAINER" \
     -p "${PORT}:8080" \
@@ -67,31 +67,31 @@ docker run -d \
     -v "${SCRIPT_DIR}/plugins.txt:/tmp/plugins.txt:ro" \
     jenkins/jenkins:lts-jdk17
 
-# Copiere HPI cu docker cp (evită problemele de path Windows cu volume mounts)
+# Copy the HPI with docker cp (avoids Windows path issues with volume mounts)
 sleep 3
 docker cp "${HPI_FILE}" "${CONTAINER}:/tmp/mdssc-scanner.hpi"
 
-# ── 2. Instalare dependențe ───────────────────────────────────────────────────
-echo "[2/4] Instalare dependențe plugin..."
+# ── 2. Install dependencies ───────────────────────────────────────────────────
+echo "[2/4] Installing plugin dependencies..."
 docker exec "$CONTAINER" jenkins-plugin-cli --plugin-file /tmp/plugins.txt 2>&1 | \
     grep -E "(Installed|ERROR)" || true
 docker exec "$CONTAINER" bash -c 'cp /tmp/mdssc-scanner.hpi "$JENKINS_HOME/plugins/mdssc-scanner.hpi"'
 
-# ── 3. Restart + așteptare ────────────────────────────────────────────────────
-echo "[3/4] Restart Jenkins (activare plugin-uri + JCasC)..."
+# ── 3. Restart + wait ─────────────────────────────────────────────────────────
+echo "[3/4] Restarting Jenkins (activating plugins + JCasC)..."
 docker restart "$CONTAINER"
 
-echo "[4/4] Aștept Jenkins să pornească..."
+echo "[4/4] Waiting for Jenkins to start..."
 for i in $(seq 1 60); do
     if jcurl "http://localhost:${PORT}/api/json" -o /dev/null 2>/dev/null; then
         echo ""
         echo "=========================================="
         echo "  Jenkins READY!"
-        echo "  Deschide: http://localhost:${PORT}"
+        echo "  Open: http://localhost:${PORT}"
         echo "  User    : admin"
-        echo "  Parolă  : admin123"
+        echo "  Password: admin123"
         echo ""
-        echo "  Plugin instalat:"
+        echo "  Installed plugin:"
         jcurl "http://localhost:${PORT}/pluginManager/api/json?depth=1" 2>/dev/null | \
             python3 -c "
 import sys, json
@@ -100,7 +100,7 @@ m = next((p for p in plugins if 'mdssc' in p.get('shortName','').lower()), None)
 if m: print(f'  mdssc-scanner v{m[\"version\"]} — active={m[\"active\"]}')
 " 2>/dev/null || true
         echo ""
-        echo "  Oprire: docker stop ${CONTAINER}"
+        echo "  Stop: docker stop ${CONTAINER}"
         echo "=========================================="
         exit 0
     fi
@@ -108,5 +108,5 @@ if m: print(f'  mdssc-scanner v{m[\"version\"]} — active={m[\"active\"]}')
     [[ $((i % 6)) -eq 0 ]] && echo "  ...${i}s"
 done
 
-echo "ERROR: Jenkins nu a pornit în 5 minute"
+echo "ERROR: Jenkins did not start within 5 minutes"
 exit 1

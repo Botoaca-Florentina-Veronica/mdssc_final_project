@@ -74,21 +74,21 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
             // 1. Health check
             client.checkHealth(log);
 
-            // 2. Determină storageId + repositoryId.
-            //    Primar: din câmpurile Connection/Repository (selectate în UI).
-            //    Fallback: dacă lipsesc dar e dat workflowId, le rezolvăm din workflow (CI).
+            // 2. Determine storageId + repositoryId.
+            //    Primary: from the Connection/Repository fields (selected in the UI).
+            //    Fallback: if missing but a workflowId is given, resolve them from the workflow (CI).
             String storageId = (connectionId != null) ? connectionId.trim() : "";
             String repoId    = (repository   != null) ? repository.trim()   : "";
             if ((storageId.isBlank() || repoId.isBlank())
                     && workflowId != null && !workflowId.isBlank()) {
-                log.println("[MDSSC] Connection/Repository goale — rezolv din workflow " + workflowId);
+                log.println("[MDSSC] Connection/Repository empty — resolving from workflow " + workflowId);
                 WorkflowInfo wf = client.resolveWorkflow(workflowId.trim(), log);
                 if (storageId.isBlank()) storageId = wf.getStorageId();
                 if (repoId.isBlank())    repoId    = wf.getRepositoryId();
             }
             if (storageId.isBlank() || repoId.isBlank()) {
-                listener.error("[MDSSC] Lipsesc Connection/Repository. Completează-le în UI "
-                        + "sau specifică un WorkflowId din care să fie rezolvate.");
+                listener.error("[MDSSC] Connection/Repository are missing. Fill them in the UI "
+                        + "or specify a WorkflowId from which they can be resolved.");
                 run.setResult(Result.FAILURE);
                 return;
             }
@@ -100,7 +100,7 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
             if (effectiveBranch.startsWith("origin/"))
                 effectiveBranch = effectiveBranch.substring(7);
 
-            // 4. Start indirect scan (cu nume prietenos rezolvat din GitHub pentru raport)
+            // 4. Start indirect scan (with a friendly name resolved from GitHub for the report)
             String wfId = (workflowId != null) ? workflowId.trim() : "";
             String repoName = resolveRepoName(repoId);
             String scanId = client.scanRepositoryIndirect(
@@ -133,7 +133,7 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
         }
     }
 
-    // Decodează repoId base64 → ID numeric GitHub → nume real; null dacă nu reușește.
+    // Decode base64 repoId → numeric GitHub ID → real name; null if it fails.
     static String resolveRepoName(String base64Id) {
         try {
             String decoded = new String(java.util.Base64.getDecoder().decode(base64Id),
@@ -144,7 +144,7 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
                 if (numeric.matches("\\d+"))
                     return MdsscApiClient.githubRepoName(numeric);
             }
-        } catch (Exception ignored) { /* fallback: fără nume */ }
+        } catch (Exception ignored) { /* fallback: no name */ }
         return null;
     }
 
@@ -245,7 +245,7 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
                 if (apiKey.isBlank()) return m;
                 MdsscApiClient client = new MdsscApiClient(mdsscInstance, apiKey);
 
-                // Dacă e specificat workflowId, pre-selectăm conexiunea lui
+                // If a workflowId is specified, pre-select its connection
                 WorkflowInfo wf = workflowInfoQuiet(client, workflowId);
                 String selStorage = (wf != null) ? wf.getStorageId() : "";
 
@@ -278,11 +278,11 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
                 if (apiKey.isBlank()) return m;
                 MdsscApiClient client = new MdsscApiClient(mdsscInstance, apiKey);
 
-                // Pre-selectăm repo-ul workflow-ului dacă e specificat
+                // Pre-select the workflow's repo if one is specified
                 WorkflowInfo wf = workflowInfoQuiet(client, workflowId);
                 String selRepo = (wf != null) ? wf.getRepositoryId() : "";
 
-                // MDSSC nu expune nume prietenoase — încercăm GitHub API, fallback la base64
+                // MDSSC does not expose friendly names — try the GitHub API, fall back to base64
                 var refs = client.listReferences(connectionId);
                 if (refs.isArray()) {
                     for (var r : refs) {
@@ -297,7 +297,7 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
             return m;
         }
 
-        // Preia info workflow fără a arunca excepție (context UI).
+        // Fetch workflow info without throwing an exception (UI context).
         private WorkflowInfo workflowInfoQuiet(MdsscApiClient client, String workflowId) {
             if (workflowId == null || workflowId.isBlank()) return null;
             try {
@@ -307,9 +307,9 @@ public class SourceCodeScanStep extends Builder implements SimpleBuildStep {
             }
         }
 
-        // Nume afișat: încearcă GitHub API (nume real), altfel base64 decodat.
+        // Display name: try the GitHub API (real name), otherwise the decoded base64.
         private String repoDisplayName(String base64Id) {
-            String decoded = decodeRepoId(base64Id);   // ex: "github-ioana/1264280155"
+            String decoded = decodeRepoId(base64Id);   // e.g. "github-ioana/1264280155"
             int slash = decoded.lastIndexOf('/');
             if (slash >= 0) {
                 String numeric = decoded.substring(slash + 1);
