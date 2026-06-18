@@ -166,29 +166,6 @@ public class JenkinsIntegrationTest {
         assertEquals(Result.FAILURE, build.getResult());
     }
 
-    @Test
-    public void testJobMarkedUnstableWhenFileExceedsLimit() throws Exception {
-        addCredential(API_KEY);
-
-        FreeStyleProject project = jenkins.createFreeStyleProject();
-
-        // Create a file bigger than 1MB using Java directly in workspace
-        project.getBuildersList().add(new hudson.tasks.BatchFile(
-            "fsutil file createnew bigfile.hpi 2097152"
-        ));
-
-        project.getBuildersList().add(new ArtifactScanStep(
-            MDSSC_URL,
-            CRED_ID,
-            "bigfile.hpi",
-            "", "none",
-            false, false,
-            30, 5, 1  // maxFileSizeMb = 1MB limit
-        ));
-
-        FreeStyleBuild build = project.scheduleBuild2(0).get();
-        assertEquals(Result.UNSTABLE, build.getResult());
-    }
     // ── 3. Threshold behavior ────────────────────────────────────────────────
 
     @Test
@@ -208,5 +185,34 @@ public class JenkinsIntegrationTest {
 
         FreeStyleBuild build = project.scheduleBuild2(0).get();
         assertEquals(Result.FAILURE, build.getResult());
+    }
+
+    // ── 4. File size limit ───────────────────────────────────────────────────
+
+    @Test
+    public void testJobMarkedUnstableWhenFileExceedsLimit() throws Exception {
+        // When file exceeds maxFileSizeMb limit, job should be marked UNSTABLE
+        addCredential(API_KEY);
+
+        FreeStyleProject project = jenkins.createFreeStyleProject();
+
+        // Create a 2MB file directly in workspace using Java
+        project.getBuildersList().add(new hudson.tasks.BatchFile(
+            "python -c \"open('bigfile.hpi','wb').write(b'A'*2097152)\" || " +
+            "python3 -c \"open('bigfile.hpi','wb').write(b'A'*2097152)\""
+        ));
+
+        // Scan with 1MB limit — should trigger UNSTABLE
+        project.getBuildersList().add(new ArtifactScanStep(
+            MDSSC_URL,
+            CRED_ID,
+            "bigfile.hpi",
+            "", "none",
+            false, false,
+            30, 5, 1
+        ));
+
+        FreeStyleBuild build = project.scheduleBuild2(0).get();
+        assertEquals(Result.UNSTABLE, build.getResult());
     }
 }
