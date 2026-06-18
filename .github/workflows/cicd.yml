@@ -4,35 +4,35 @@ on:
   push:
   pull_request:
 
-  # ── Scanare zilnică programată ───────────────────────────────────────────────
-  # Rulează zilnic la 06:00 UTC (09:00 România vara / 08:00 iarna — cron e în UTC).
-  # Se activează DOAR dacă variabila de repo MDSSC_DAILY_SCAN == 'true'
+  # ── Scheduled daily scan ─────────────────────────────────────────────────────
+  # Runs daily at 06:00 UTC (09:00 Romania in summer / 08:00 in winter — cron is in UTC).
+  # Enabled ONLY if the repo variable MDSSC_DAILY_SCAN == 'true'
   # (GitHub → Settings → Secrets and variables → Actions → Variables).
-  # La rulare programată se execută doar Source Scan + Artifact Scan.
+  # On scheduled runs only Source Scan + Artifact Scan are executed.
   schedule:
     - cron: '0 6 * * *'
 
-  # ── Rulare manuală cu parametri personalizați ────────────────────────────────
-  # Accesează GitHub → Actions → CI/CD → Run workflow → completează câmpurile.
-  # Valorile introduse aici suprascriu .github/mdssc-params.env.
-  # Lasa gol pentru a folosi valorile implicite din .github/mdssc-params.env.
+  # ── Manual run with custom parameters ────────────────────────────────────────
+  # Go to GitHub → Actions → CI/CD → Run workflow → fill in the fields.
+  # Values entered here override .github/mdssc-params.env.
+  # Leave empty to use the default values from .github/mdssc-params.env.
   workflow_dispatch:
     inputs:
-      # ── Conexiune ──────────────────────────────────────────────────────────
+      # ── Connection ─────────────────────────────────────────────────────────
       api_key_header:
-        description: 'Header HTTP pentru API key (ex: apikey)'
+        description: 'HTTP header for the API key (e.g. apikey)'
         required: false
         default: ''
 
-      # ── Workflow MDSSC ─────────────────────────────────────────────────────
+      # ── MDSSC Workflow ─────────────────────────────────────────────────────
       workflow_id:
-        description: 'MDSSC Workflow ID (gol = auto-detectare)'
+        description: 'MDSSC Workflow ID (empty = auto-detect)'
         required: false
         default: ''
 
-      # ── Threshold vulnerabilități ──────────────────────────────────────────
+      # ── Vulnerability threshold ────────────────────────────────────────────
       vulnerability_threshold:
-        description: 'Severitate minimă care eșuează build-ul'
+        description: 'Minimum severity that fails the build'
         required: false
         default: ''
         type: choice
@@ -44,39 +44,39 @@ on:
           - high
           - critical
 
-      # ── Opțiuni fail ───────────────────────────────────────────────────────
+      # ── Fail options ───────────────────────────────────────────────────────
       fail_on_secret:
-        description: 'Eșuează dacă găsește secrete hardcodate (true/false)'
+        description: 'Fail if hardcoded secrets are found (true/false)'
         required: false
         default: ''
       fail_on_malware:
-        description: 'Eșuează dacă găsește malware (true/false)'
+        description: 'Fail if malware is found (true/false)'
         required: false
         default: ''
 
       # ── Timing ────────────────────────────────────────────────────────────
       scan_timeout:
-        description: 'Timeout scan în secunde (implicit: 900)'
+        description: 'Scan timeout in seconds (default: 900)'
         required: false
         default: ''
       poll_interval:
-        description: 'Interval poll în secunde (implicit: 10)'
+        description: 'Poll interval in seconds (default: 10)'
         required: false
         default: ''
 
       # ── Artifact scan ──────────────────────────────────────────────────────
       max_upload_mb:
-        description: 'Dimensiune maximă artefact pentru upload în MB (implicit: 100)'
+        description: 'Maximum artifact size for upload in MB (default: 100)'
         required: false
         default: ''
       skip_large_artifacts:
-        description: 'Sare artefactele prea mari în loc să dea fail (true/false)'
+        description: 'Skip artifacts that are too large instead of failing (true/false)'
         required: false
         default: ''
 
       # ── Source scan ────────────────────────────────────────────────────────
       branch:
-        description: 'Branch de scanat (gol = branch-ul curent)'
+        description: 'Branch to scan (empty = current branch)'
         required: false
         default: ''
 
@@ -84,13 +84,13 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  actions: read   # necesar pentru jobs API (durate pe stage în raport)
+  actions: read   # required for the jobs API (per-stage durations in the report)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# ── Valori implicite — suprascrise de workflow_dispatch inputs sau .github/mdssc-params.env ──
+# ── Default values — overridden by workflow_dispatch inputs or .github/mdssc-params.env ──
 env:
   MDSSC_API_KEY_HEADER:       ${{ inputs.api_key_header         || 'apikey' }}
   VULNERABILITY_THRESHOLD:    ${{ inputs.vulnerability_threshold || 'critical' }}
@@ -104,12 +104,12 @@ env:
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 1 — Source Code Scan
-  # Indirect scan: MDSSC se conectează la GitHub și scanează repo-ul direct.
-  # Identic cu Stage 5 din Jenkins pipeline (MDSSC-Source Code Scan).
+  # Indirect scan: MDSSC connects to GitHub and scans the repo directly.
+  # Identical to Stage 5 of the Jenkins pipeline (MDSSC-Source Code Scan).
   # ─────────────────────────────────────────────────────────────────────────────
   source-scan:
     name: "1 · Source Code Scan"
-    # Scanare programată: doar dacă MDSSC_DAILY_SCAN == 'true'. Push/PR: mereu.
+    # Scheduled scan: only if MDSSC_DAILY_SCAN == 'true'. Push/PR: always.
     if: ${{ github.event_name != 'schedule' || vars.MDSSC_DAILY_SCAN == 'true' }}
     runs-on: ubuntu-latest
     outputs:
@@ -121,16 +121,16 @@ jobs:
       - name: MDSSC Source Code Scan (indirect — MDSSC pulls from GitHub)
         id: scan
         env:
-          # Credențiale — vin din GitHub Secrets (Settings → Secrets → Actions)
+          # Credentials — come from GitHub Secrets (Settings → Secrets → Actions)
           MDSSC_INSTANCE:        ${{ secrets.MDSSC_INSTANCE }}
           MDSSC_API_KEY:         ${{ secrets.MDSSC_API_KEY }}
-          # Conexiune MDSSC–GitHub — auto-detectate din workflow dacă nu sunt setate
+          # MDSSC–GitHub connection — auto-detected from the workflow if not set
           MDSSC_WORKFLOW_ID:     ${{ inputs.workflow_id || secrets.MDSSC_WORKFLOW_ID }}
           MDSSC_STORAGE_ID:      ${{ secrets.MDSSC_STORAGE_ID }}
           MDSSC_REPOSITORY_ID:   ${{ secrets.MDSSC_REPOSITORY_ID }}
-          # Branch de scanat
+          # Branch to scan
           MDSSC_BRANCH:          ${{ inputs.branch || github.ref_name }}
-          # Parametri scan — din workflow_dispatch inputs sau env globale
+          # Scan parameters — from workflow_dispatch inputs or global env
           MDSSC_API_KEY_HEADER:  ${{ env.MDSSC_API_KEY_HEADER }}
           VULNERABILITY_THRESHOLD: ${{ env.VULNERABILITY_THRESHOLD }}
           FAIL_ON_SECRET:        ${{ env.FAIL_ON_SECRET }}
@@ -149,7 +149,7 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 2 — Security Scan
-  # npm audit pe dependențele e2e/. Rulează în paralel cu source-scan.
+  # npm audit on the e2e/ dependencies. Runs in parallel with source-scan.
   # ─────────────────────────────────────────────────────────────────────────────
   security-scan:
     name: "2 · Security Scan"
@@ -192,7 +192,7 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 3 — Build Plugin (.hpi)
-  # Așteaptă source-scan + security-scan. Construiește plugin-ul Jenkins.
+  # Waits for source-scan + security-scan. Builds the Jenkins plugin.
   # ─────────────────────────────────────────────────────────────────────────────
   build:
     name: "3 · Build Plugin (.hpi)"
@@ -232,7 +232,7 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 4 — Artifact Scan
-  # Scanează .hpi-ul construit cu MDSSC (direct upload).
+  # Scans the built .hpi with MDSSC (direct upload).
   # ─────────────────────────────────────────────────────────────────────────────
   artifact-scan:
     name: "4 · Artifact Scan (.hpi)"
@@ -278,14 +278,14 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 5 — Plugin Integration Test (Jenkins Docker)
-  # Pornește o instanță Jenkins reală în Docker, instalează .hpi-ul construit,
-  # rulează Jenkinsfile.test cu scan real la MDSSC.
-  # Rulează în paralel cu E2E Tests (ambele după artifact-scan).
+  # Starts a real Jenkins instance in Docker, installs the built .hpi,
+  # runs Jenkinsfile.test with a real scan against MDSSC.
+  # Runs in parallel with E2E Tests (both after artifact-scan).
   # ─────────────────────────────────────────────────────────────────────────────
   plugin-test:
     name: "5 · Plugin Integration Test (Jenkins)"
     needs: artifact-scan
-    # Nu rulează la scanarea zilnică programată (doar push/PR/manual).
+    # Does not run on the scheduled daily scan (only push/PR/manual).
     if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -325,13 +325,13 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 6 — E2E Tests
-  # Playwright + mock server MDSSC.
-  # Rulează în paralel cu Plugin Integration Test.
+  # Playwright + MDSSC mock server.
+  # Runs in parallel with the Plugin Integration Test.
   # ─────────────────────────────────────────────────────────────────────────────
   e2e-tests:
     name: "6 · E2E Tests"
     needs: [build, artifact-scan]
-    # Nu rulează la scanarea zilnică programată (doar push/PR/manual).
+    # Does not run on the scheduled daily scan (only push/PR/manual).
     if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     steps:
@@ -357,7 +357,7 @@ jobs:
         working-directory: e2e
 
       - name: Run E2E tests
-        # E2E încă neimplementate — nu eșua pipeline-ul dacă lipsesc/pică
+        # E2E not implemented yet — do not fail the pipeline if missing/failing
         continue-on-error: true
         env:
           MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
@@ -385,13 +385,13 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 7 — Report + GitHub Pages
-  # Mereu rulează. Publică pe Pages la push pe main.
+  # Always runs. Publishes to Pages on push to main.
   # ─────────────────────────────────────────────────────────────────────────────
   report:
     name: "7 · Report"
     needs: [source-scan, security-scan, build, artifact-scan, plugin-test, e2e-tests, release]
     runs-on: ubuntu-latest
-    # Nu rulează la scanarea zilnică programată (doar push/PR/manual).
+    # Does not run on the scheduled daily scan (only push/PR/manual).
     if: ${{ always() && github.event_name != 'schedule' }}
     steps:
       - uses: actions/checkout@v4
@@ -443,7 +443,7 @@ jobs:
           path: test-results/pipeline-report.json
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Deploy GitHub Pages (doar la push pe main)
+  # Deploy GitHub Pages (only on push to main)
   # ─────────────────────────────────────────────────────────────────────────────
   deploy-pages:
     name: "Deploy GitHub Pages"
@@ -462,11 +462,11 @@ jobs:
         uses: actions/deploy-pages@v4
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Release Plugin (.hpi) pe GitHub — opțional
-  # Se activează DOAR dacă variabila de repo MDSSC_RELEASE == 'true', la push pe main.
-  # Tag: vYYYY.MM.DD-<run_number> (mereu unic).
-  # needs: artifact-scan ⇒ release DOAR după ce scanarea artefactului a trecut
-  # (artifact-scan depinde de build, care depinde de source-scan).
+  # Release Plugin (.hpi) on GitHub — optional
+  # Enabled ONLY if the repo variable MDSSC_RELEASE == 'true', on push to main.
+  # Tag: vYYYY.MM.DD-<run_number> (always unique).
+  # needs: artifact-scan ⇒ release ONLY after the artifact scan has passed
+  # (artifact-scan depends on build, which depends on source-scan).
   # ─────────────────────────────────────────────────────────────────────────────
   release:
     name: "Release Plugin (.hpi)"
@@ -489,7 +489,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"
-          echo "Creating release $TAG cu artefactul .hpi"
+          echo "Creating release $TAG with the .hpi artifact"
           gh release create "$TAG" plugin-out/mdssc-plugin.hpi \
             --title "MDSSC Plugin $TAG" \
-            --notes "Release automat de pe main @ ${GITHUB_SHA:0:7} (run #${GITHUB_RUN_NUMBER})"
+            --notes "Automatic release from main @ ${GITHUB_SHA:0:7} (run #${GITHUB_RUN_NUMBER})"
