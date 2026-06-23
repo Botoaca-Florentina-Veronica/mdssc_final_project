@@ -2,18 +2,18 @@
 #
 # ci/jenkins/start-jenkins.sh
 # ─────────────────────────────────────────────────────────────────────────────
-# Pornește o instanță Jenkins Docker temporară, instalează plugin-ul
-# mdssc-scanner.hpi, rulează Jenkinsfile.test și raportează rezultatul.
+# Starts a temporary Jenkins Docker instance, installs the
+# mdssc-scanner.hpi plugin, runs Jenkinsfile.test and reports the result.
 #
-# Variabile de mediu necesare (din GitHub Secrets):
-#   MDSSC_INSTANCE  — URL instanța MDSSC (ex: http://35.156.106.42)
-#   MDSSC_API_KEY   — Cheia API MDSSC
-#   HPI_FILE        — Calea locală către .hpi construit
-#                     (implicit: <repo>/plugin-out/mdssc-plugin.hpi)
+# Required environment variables (from GitHub Secrets):
+#   MDSSC_INSTANCE  — MDSSC instance URL (e.g. http://35.156.106.42)
+#   MDSSC_API_KEY   — MDSSC API key
+#   HPI_FILE        — local path to the built .hpi
+#                     (default: <repo>/plugin-out/mdssc-plugin.hpi)
 #
-# Ieșire:
-#   exit 0 — build Jenkins SUCCESS
-#   exit 1 — build FAILURE sau timeout
+# Output:
+#   exit 0 — Jenkins build SUCCESS
+#   exit 1 — FAILURE or timeout
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -31,12 +31,12 @@ COOKIE_JAR=$(mktemp /tmp/jenkins-cookies-XXXXXX.txt)
 
 mkdir -p "$LOG_DIR"
 
-# ── Cleanup la ieșire ─────────────────────────────────────────────────────────
+# ── Cleanup on exit ───────────────────────────────────────────────────────────
 cleanup() {
     echo ""
-    echo "[jenkins-test] Salvare loguri container..."
+    echo "[jenkins-test] Saving container logs..."
     docker logs "$CONTAINER" > "${LOG_DIR}/jenkins-container.log" 2>&1 || true
-    echo "[jenkins-test] Oprire container ${CONTAINER}..."
+    echo "[jenkins-test] Stopping container ${CONTAINER}..."
     docker stop "$CONTAINER" 2>/dev/null || true
     docker rm   "$CONTAINER" 2>/dev/null || true
     rm -f "$COOKIE_JAR"
@@ -49,38 +49,38 @@ echo "  Jenkins : ${JENKINS_URL}"
 echo "  Plugin  : ${HPI_FILE}"
 echo "=========================================="
 
-# ── Validare prerequisite ─────────────────────────────────────────────────────
-[[ -f "$HPI_FILE" ]] || { echo "ERROR: Fișierul .hpi nu există la: ${HPI_FILE}"; exit 1; }
-[[ -n "${MDSSC_INSTANCE:-}" ]] || { echo "ERROR: MDSSC_INSTANCE nu este setat"; exit 1; }
-[[ -n "${MDSSC_API_KEY:-}" ]]  || { echo "ERROR: MDSSC_API_KEY nu este setat"; exit 1; }
+# ── Validate prerequisites ────────────────────────────────────────────────────
+[[ -f "$HPI_FILE" ]] || { echo "ERROR: .hpi file does not exist at: ${HPI_FILE}"; exit 1; }
+[[ -n "${MDSSC_INSTANCE:-}" ]] || { echo "ERROR: MDSSC_INSTANCE is not set"; exit 1; }
+[[ -n "${MDSSC_API_KEY:-}" ]]  || { echo "ERROR: MDSSC_API_KEY is not set"; exit 1; }
 
-# ── Helper: curl cu autentificare Jenkins + cookie jar (necesar pentru CSRF) ──
+# ── Helper: curl with Jenkins auth + cookie jar (required for CSRF) ───────────
 jcurl() {
     curl -sf -u "${JENKINS_USER}:${JENKINS_PASS}" -b "$COOKIE_JAR" -c "$COOKIE_JAR" "$@"
 }
 
-# ── Helper: așteptare Jenkins ready ──────────────────────────────────────────
+# ── Helper: wait for Jenkins ready ───────────────────────────────────────────
 wait_for_jenkins() {
     local max_wait=240
     local elapsed=0
-    echo "[jenkins-test] Aștept Jenkins la ${JENKINS_URL}..."
+    echo "[jenkins-test] Waiting for Jenkins at ${JENKINS_URL}..."
     while [[ $elapsed -lt $max_wait ]]; do
         if jcurl "${JENKINS_URL}/api/json" -o /dev/null 2>/dev/null; then
-            echo "[jenkins-test] Jenkins ready după ${elapsed}s"
+            echo "[jenkins-test] Jenkins ready after ${elapsed}s"
             return 0
         fi
         sleep 5
         elapsed=$((elapsed + 5))
         [[ $((elapsed % 30)) -eq 0 ]] && echo "  ...${elapsed}s"
     done
-    echo "ERROR: Jenkins nu a pornit în ${max_wait}s"
+    echo "ERROR: Jenkins did not start within ${max_wait}s"
     docker logs "$CONTAINER" 2>/dev/null | tail -30
     return 1
 }
 
-# ── 1. Pornire Jenkins ────────────────────────────────────────────────────────
+# ── 1. Start Jenkins ──────────────────────────────────────────────────────────
 echo ""
-echo "[1/7] Pornire Jenkins Docker (jenkins/jenkins:lts-jdk17)..."
+echo "[1/7] Starting Jenkins Docker (jenkins/jenkins:lts-jdk17)..."
 
 docker run -d \
     --name "$CONTAINER" \
@@ -95,39 +95,39 @@ docker run -d \
     -v "${HPI_FILE}:/tmp/mdssc-scanner.hpi:ro" \
     jenkins/jenkins:lts-jdk17
 
-echo "[jenkins-test] Container pornit: ${CONTAINER}"
+echo "[jenkins-test] Container started: ${CONTAINER}"
 
-# Scurt delay ca Jenkins să scrie fișierele inițiale înainte de instalare plugins
+# Short delay so Jenkins writes the initial files before installing plugins
 sleep 10
 
-# ── 2. Instalare dependențe plugin ────────────────────────────────────────────
+# ── 2. Install plugin dependencies ────────────────────────────────────────────
 echo ""
-echo "[2/7] Instalare dependențe plugin via jenkins-plugin-cli..."
+echo "[2/7] Installing plugin dependencies via jenkins-plugin-cli..."
 docker exec "$CONTAINER" jenkins-plugin-cli \
     --plugin-file /tmp/plugins.txt \
     2>&1 | tee "${LOG_DIR}/plugin-install.log" | grep -E "(Installed|Skipped|ERROR|error)" || true
-echo "[jenkins-test] Dependențe instalate."
+echo "[jenkins-test] Dependencies installed."
 
-# ── 3. Instalare plugin MDSSC ─────────────────────────────────────────────────
+# ── 3. Install the MDSSC plugin ───────────────────────────────────────────────
 echo ""
-echo "[3/7] Instalare mdssc-scanner.hpi în Jenkins..."
+echo "[3/7] Installing mdssc-scanner.hpi into Jenkins..."
 docker exec "$CONTAINER" bash -c 'cp /tmp/mdssc-scanner.hpi "$JENKINS_HOME/plugins/mdssc-scanner.hpi"'
-echo "[jenkins-test] Plugin copiat în \$JENKINS_HOME/plugins/"
+echo "[jenkins-test] Plugin copied into \$JENKINS_HOME/plugins/"
 
 # ── 4. Restart Jenkins ────────────────────────────────────────────────────────
 echo ""
-echo "[4/7] Restart Jenkins (activare plugin-uri + JCasC)..."
+echo "[4/7] Restarting Jenkins (activating plugins + JCasC)..."
 docker restart "$CONTAINER"
 
-# ── 5. Așteptare Jenkins ready ────────────────────────────────────────────────
+# ── 5. Wait for Jenkins ready ─────────────────────────────────────────────────
 echo ""
-echo "[5/7] Aștept Jenkins să fie ready (cu auth + JCasC activ)..."
+echo "[5/7] Waiting for Jenkins to be ready (with auth + JCasC active)..."
 wait_for_jenkins
 
-# Verificare că plugin-ul MDSSC s-a încărcat
-echo "[jenkins-test] Verificare plugin MDSSC încărcat..."
+# Verify that the MDSSC plugin loaded
+echo "[jenkins-test] Verifying MDSSC plugin loaded..."
 docker exec "$CONTAINER" bash -c '
-    ls -la "$JENKINS_HOME/plugins/" | grep -i mdssc || echo "  (plugin mdssc nu apare în listing)"
+    ls -la "$JENKINS_HOME/plugins/" | grep -i mdssc || echo "  (mdssc plugin not shown in listing)"
 ' 2>/dev/null || true
 
 PLUGIN_INFO=$(jcurl "${JENKINS_URL}/pluginManager/api/json?depth=1" 2>/dev/null | \
@@ -143,26 +143,26 @@ try:
         version = mdssc.get('version', '?')
         print(f'  Plugin: {mdssc[\"shortName\"]} v{version} — active={active} enabled={enabled}')
     else:
-        print('  WARN: plugin mdssc-scanner nu apare în lista Jenkins (poate necesită reload)')
+        print('  WARN: mdssc-scanner plugin not shown in the Jenkins list (may need a reload)')
 except Exception as e:
-    print(f'  (nu s-a putut interoga pluginManager: {e})')
-" 2>/dev/null || echo "  (verificare plugin indisponibilă)")
+    print(f'  (could not query pluginManager: {e})')
+" 2>/dev/null || echo "  (plugin verification unavailable)")
 echo "$PLUGIN_INFO"
 
-# ── 6. Creare job Pipeline ────────────────────────────────────────────────────
+# ── 6. Create Pipeline job ────────────────────────────────────────────────────
 echo ""
-echo "[6/7] Creare job pipeline 'mdssc-plugin-test'..."
+echo "[6/7] Creating pipeline job 'mdssc-plugin-test'..."
 
-# Obține CSRF crumb și construiește array de argumente curl
+# Get the CSRF crumb and build the curl arguments array
 CRUMB=$(jcurl "${JENKINS_URL}/crumbIssuer/api/json" 2>/dev/null | \
     python3 -c "import sys,json; print(json.load(sys.stdin).get('crumb',''))" 2>/dev/null || echo "")
 echo "[jenkins-test] CSRF crumb: ${CRUMB:-(none)}"
 
-# Array bash — singura metodă corectă pentru argumente opționale cu spații
+# Bash array — the only correct way for optional arguments with spaces
 CRUMB_ARGS=()
 [[ -n "$CRUMB" ]] && CRUMB_ARGS=(-H "Jenkins-Crumb: ${CRUMB}")
 
-# Generează XML job cu Jenkinsfile.test embedded (Python face XML escaping corect)
+# Generate job XML with Jenkinsfile.test embedded (Python handles XML escaping correctly)
 TMP_JOB_XML=$(mktemp /tmp/mdssc-job-XXXXXX.xml)
 python3 - <<PYEOF > "$TMP_JOB_XML"
 import xml.sax.saxutils as X
@@ -186,9 +186,9 @@ xml = '''<?xml version="1.1" encoding="UTF-8"?>
 print(xml)
 PYEOF
 
-echo "[jenkins-test] XML generat ($(wc -c < "$TMP_JOB_XML") bytes)"
+echo "[jenkins-test] XML generated ($(wc -c < "$TMP_JOB_XML") bytes)"
 
-# POST job config — fără -f ca să capturăm codul HTTP real (nu 0)
+# POST job config — without -f so we capture the real HTTP code (not 0)
 HTTP_CODE=$(curl -s -w '%{http_code}' -o /tmp/mdssc-create-resp.txt \
     -X POST "${JENKINS_URL}/createItem?name=mdssc-plugin-test" \
     -u "${JENKINS_USER}:${JENKINS_PASS}" \
@@ -202,14 +202,14 @@ echo "[jenkins-test] createItem → HTTP ${HTTP_CODE}"
 [[ -s /tmp/mdssc-create-resp.txt ]] && cat /tmp/mdssc-create-resp.txt && echo ""
 
 if [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
-    echo "[jenkins-test] Job creat cu succes"
+    echo "[jenkins-test] Job created successfully"
 else
-    echo "ERROR: Nu s-a putut crea job-ul — HTTP ${HTTP_CODE}"
+    echo "ERROR: Could not create the job — HTTP ${HTTP_CODE}"
     exit 1
 fi
 
-# Pornire build
-echo "[jenkins-test] Pornire build..."
+# Start build
+echo "[jenkins-test] Starting build..."
 BUILD_HTTP=$(curl -s -w '%{http_code}' -o /dev/null \
     -X POST "${JENKINS_URL}/job/mdssc-plugin-test/build" \
     -u "${JENKINS_USER}:${JENKINS_PASS}" \
@@ -217,19 +217,19 @@ BUILD_HTTP=$(curl -s -w '%{http_code}' -o /dev/null \
     "${CRUMB_ARGS[@]}" 2>/dev/null)
 echo "[jenkins-test] build trigger → HTTP ${BUILD_HTTP}"
 [[ "$BUILD_HTTP" -ge 200 && "$BUILD_HTTP" -lt 300 ]] || \
-    { echo "ERROR: Nu s-a putut porni build-ul — HTTP ${BUILD_HTTP}"; exit 1; }
+    { echo "ERROR: Could not start the build — HTTP ${BUILD_HTTP}"; exit 1; }
 
-echo "[jenkins-test] Build pornit. Polling rezultat..."
+echo "[jenkins-test] Build started. Polling result..."
 
-# ── 7. Poll rezultat ──────────────────────────────────────────────────────────
+# ── 7. Poll result ────────────────────────────────────────────────────────────
 echo ""
 echo "[7/7] Polling build result (max 30 min)..."
 
 BUILD_URL="${JENKINS_URL}/job/mdssc-plugin-test/1"
 MAX_POLLS=180   # 180 * 10s = 30 min
 
-# Așteptăm apariția build-ului #1
-echo "[jenkins-test] Aștept apariția build-ului..."
+# Wait for build #1 to appear
+echo "[jenkins-test] Waiting for the build to appear..."
 for i in $(seq 1 30); do
     if jcurl "${BUILD_URL}/api/json" -o /dev/null 2>/dev/null; then
         break
@@ -241,7 +241,7 @@ POLL=0
 while [[ $POLL -lt $MAX_POLLS ]]; do
     BUILD_JSON=$(jcurl "${BUILD_URL}/api/json" 2>/dev/null || echo "{}")
 
-    # Verificăm `building` — Jenkins setează result=FAILURE imediat dar build-ul poate fi încă activ
+    # Check `building` — Jenkins sets result=FAILURE immediately but the build may still be active
     RESULT=$(echo "$BUILD_JSON" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
@@ -257,11 +257,11 @@ else:
     STATE="${RESULT%|*}"
     DURATION_S="${RESULT#*|}"
 
-    echo "  [$(( POLL * 10 ))s] ${STATE} (durata: ${DURATION_S}s)"
+    echo "  [$(( POLL * 10 ))s] ${STATE} (duration: ${DURATION_S}s)"
 
     if [[ "$STATE" != "RUNNING" && "$STATE" != "null" && "$STATE" != "UNKNOWN" ]]; then
         echo ""
-        echo "Build finalizat cu rezultatul: ${STATE}"
+        echo "Build finished with result: ${STATE}"
         RESULT="$STATE"
         break
     fi
@@ -271,19 +271,19 @@ else:
 done
 RESULT="${RESULT%|*}"
 
-# Salvare console output
+# Save console output
 echo ""
-echo "[jenkins-test] Salvare console output..."
+echo "[jenkins-test] Saving console output..."
 jcurl "${BUILD_URL}/consoleText" > "${LOG_DIR}/build-console.txt" 2>/dev/null || \
-    echo "(console output indisponibil)" > "${LOG_DIR}/build-console.txt"
+    echo "(console output unavailable)" > "${LOG_DIR}/build-console.txt"
 
-# Console complet — într-o secțiune pliabilă GitHub Actions
+# Full console — in a collapsible GitHub Actions section
 echo ""
-echo "::group::📋 Console Output complet (Jenkins)"
+echo "::group::📋 Full Console Output (Jenkins)"
 cat "${LOG_DIR}/build-console.txt" 2>/dev/null || true
 echo "::endgroup::"
 
-# Extrage și afișează raportul unui scan într-o secțiune proprie
+# Extract and print a scan report in its own section
 print_scan_report() {
     local label="$1"
     local title="$2"
@@ -302,14 +302,14 @@ print_scan_report() {
 
 echo ""
 echo "=========================================="
-echo "  REZULTATE SCANĂRI MDSSC"
+echo "  MDSSC SCAN RESULTS"
 echo "=========================================="
-print_scan_report "source-code"       "🔍 Source Code Scan — rezultate"
-print_scan_report "mdssc-scanner.hpi" "🛡️ Artifact Scan — rezultate"
+print_scan_report "source-code"       "🔍 Source Code Scan — results"
+print_scan_report "mdssc-scanner.hpi" "🛡️ Artifact Scan — results"
 echo ""
 
 if [[ $POLL -ge $MAX_POLLS ]]; then
-    echo "ERROR: Timeout — build nu s-a finalizat în 30 de minute"
+    echo "ERROR: Timeout — build did not finish within 30 minutes"
     exit 1
 fi
 

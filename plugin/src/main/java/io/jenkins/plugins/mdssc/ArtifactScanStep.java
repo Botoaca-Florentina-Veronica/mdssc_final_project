@@ -97,7 +97,7 @@ public class ArtifactScanStep extends Builder implements SimpleBuildStep {
             try {
                 target.copyTo(new FilePath(localFile));
 
-                // 5. Start direct scan (trimite numele original, nu cel temporar)
+                // 5. Start direct scan (send the original name, not the temp one)
                 String scanId = client.scanFileDirect(localFile, target.getName(), workflowId, log);
                 if (scanId == null || scanId.isBlank()) {
                     listener.error("[MDSSC] No scan ID returned.");

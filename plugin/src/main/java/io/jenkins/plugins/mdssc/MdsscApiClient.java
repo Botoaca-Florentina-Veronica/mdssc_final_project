@@ -70,7 +70,7 @@ public class MdsscApiClient {
         return fetchWorkflowById(id, log);
     }
 
-    // Overload silentios pentru context UI (descriptor) — fara log.
+    // Silent overload for the UI context (descriptor) — no log.
     public WorkflowInfo fetchWorkflowById(String workflowId) throws Exception {
         return fetchWorkflowById(workflowId, new PrintStream(OutputStream.nullOutputStream()));
     }
@@ -99,8 +99,8 @@ public class MdsscApiClient {
         return new WorkflowInfo(workflowId, storageId, repoId, repoName);
     }
 
-    // GET /api/v1/services — lista conexiunilor (GitHub, etc.)
-    // Răspunsul poate fi array direct SAU {"serviceDtos":[...]} / {"data":[...]}
+    // GET /api/v1/services — list of connections (GitHub, etc.)
+    // The response can be a plain array OR {"serviceDtos":[...]} / {"data":[...]}
     public JsonNode listServices() throws Exception {
         HttpURLConnection conn = openGet(baseUrl + "/services");
         int code = conn.getResponseCode();
@@ -110,8 +110,8 @@ public class MdsscApiClient {
         return unwrapArray(root, "serviceDtos", "ServiceDtos", "services", "Services", "data", "Data");
     }
 
-    // GET /api/v1/services/{storageId}/references — repo-uri + branch-uri
-    // Răspunsul poate fi array direct SAU {"repositoryReferenceInfoArray":[...]}
+    // GET /api/v1/services/{storageId}/references — repositories + branches
+    // The response can be a plain array OR {"repositoryReferenceInfoArray":[...]}
     public JsonNode listReferences(String storageId) throws Exception {
         if (storageId == null || storageId.isBlank()) return MAPPER.createArrayNode();
         HttpURLConnection conn = openGet(baseUrl + "/services/" + storageId + "/references");
@@ -124,8 +124,8 @@ public class MdsscApiClient {
                 "references", "References", "data", "Data");
     }
 
-    // GET https://api.github.com/repositories/{numericId} → numele repo-ului.
-    // Neautentificat (limită 60/oră). Întoarce null la orice eșec (rate limit etc.).
+    // GET https://api.github.com/repositories/{numericId} → the repository name.
+    // Unauthenticated (limit 60/hour). Returns null on any failure (rate limit, etc.).
     public static String githubRepoName(String numericId) {
         try {
             HttpURLConnection c = (HttpURLConnection)
@@ -145,11 +145,11 @@ public class MdsscApiClient {
                 if (n.has("name")) return n.get("name").asText();
                 if (n.has("full_name")) return n.get("full_name").asText();
             }
-        } catch (Exception ignored) { /* fallback la base64 decodat */ }
+        } catch (Exception ignored) { /* fall back to the decoded base64 */ }
         return null;
     }
 
-    // Dacă root e deja array → întoarce-l; altfel caută primul câmp care e array.
+    // If root is already an array → return it; otherwise find the first field that is an array.
     private JsonNode unwrapArray(JsonNode root, String... keys) {
         if (root != null && root.isArray()) return root;
         JsonNode inner = firstNonNull(root, keys);
@@ -159,7 +159,7 @@ public class MdsscApiClient {
 
     public String scanFileDirect(File file, String fileName, String workflowId, PrintStream log)
             throws Exception {
-        // Numele afișat în raport (fără prefixul fișierului temporar)
+        // The name shown in the report (without the temp file prefix)
         String displayName = (fileName != null && !fileName.isBlank()) ? fileName : file.getName();
         log.printf("[MDSSC] Uploading artifact: %s (%d KB)%n",
                 displayName, file.length() / 1024);
@@ -205,10 +205,10 @@ public class MdsscApiClient {
         payload.put("repositoryId", repositoryId);
         payload.putArray("repositoryReferences").add(branch);
         payload.put("scanType", 0);
-        // Nume prietenos pentru titlul raportului (rezolvat din GitHub)
+        // Friendly name for the report title (resolved from GitHub)
         if (repositoryName != null && !repositoryName.isBlank())
             payload.put("repositoryName", repositoryName);
-        // workflowId se include DOAR dacă e specificat — gol/lipsă = workflow default
+        // workflowId is included ONLY if specified — empty/missing = default workflow
         if (workflowId != null && !workflowId.isBlank())
             payload.put("workflowId", workflowId);
 

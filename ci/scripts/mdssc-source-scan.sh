@@ -2,19 +2,19 @@
 # ============================================================
 # MDSSC Source Code Scan — Indirect (MDSSC pulls from GitHub)
 #
-# Flux identic cu Jenkins pipeline (Stage 5 — MDSSC-Source Code Scan):
+# Flow identical to the Jenkins pipeline (Stage 5 — MDSSC-Source Code Scan):
 #   require_env → health → resolve_workflow → fetch metadata →
 #   POST /api/v1/scans (indirect) → poll overview → evaluate verdict
 #
 # MDSSC API calls:
 #   GET  /api/v1/health
-#   GET  /api/v1/workflows                    (auto-detect dacă MDSSC_WORKFLOW_ID e gol)
+#   GET  /api/v1/workflows                    (auto-detect if MDSSC_WORKFLOW_ID is empty)
 #   GET  /api/v1/workflows/{workflowId}       (fetch StorageId + RepositoryId)
-#   POST /api/v1/scans                        (indirect scan — MDSSC pulls din GitHub)
+#   POST /api/v1/scans                        (indirect scan — MDSSC pulls from GitHub)
 #   GET  /api/v1/scans/{id}/overview          (poll)
-#   GET  /api/v1/scans/{id}                   (rezultat final)
+#   GET  /api/v1/scans/{id}                   (final result)
 #
-# Parametri (din GitHub Secrets / workflow_dispatch inputs / ci/mdssc-params.env):
+# Parameters (from GitHub Secrets / workflow_dispatch inputs / ci/mdssc-params.env):
 #   MDSSC_INSTANCE, MDSSC_API_KEY, MDSSC_API_KEY_HEADER
 #   MDSSC_WORKFLOW_ID, MDSSC_STORAGE_ID, MDSSC_REPOSITORY_ID
 #   VULNERABILITY_THRESHOLD, FAIL_ON_SECRET, FAIL_ON_MALWARE
@@ -26,23 +26,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PARAMS_FILE="${SCRIPT_DIR}/../../.github/mdssc-params.env"
 GH_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 
-# ── 1. Încarcă parametri din config (valorile deja setate în env au prioritate) ──
+# ── 1. Load parameters from config (values already set in env take priority) ──
 if [[ -f "$PARAMS_FILE" ]]; then
     # shellcheck source=.github/mdssc-params.env
     source "$PARAMS_FILE"
 fi
 
-# Determină branch-ul de scanat
+# Determine the branch to scan
 BRANCH="${MDSSC_BRANCH:-${GITHUB_REF_NAME:-${BRANCH_NAME:-main}}}"
-# Elimină prefixul origin/ dacă există
+# Strip the origin/ prefix if present
 BRANCH="${BRANCH#origin/}"
 
 mkdir -p scan-results
 
-# ── Fallback mock ─────────────────────────────────────────────────────────────
+# ── Mock fallback ─────────────────────────────────────────────────────────────
 use_mock() {
     local reason="$1"
-    echo "::warning::${reason} — fallback la rezultat mock (pipeline continuă)"
+    echo "::warning::${reason} — falling back to mock result (pipeline continues)"
     cat > scan-results/source-scan.json <<'EOF'
 {
   "id": "mock-src-fallback",
@@ -58,9 +58,9 @@ EOF
     exit 0
 }
 
-# ── 0. Validare credențiale ───────────────────────────────────────────────────
+# ── 0. Validate credentials ───────────────────────────────────────────────────
 if [[ -z "${MDSSC_INSTANCE:-}" || -z "${MDSSC_API_KEY:-}" ]]; then
-    use_mock "MDSSC credentials lipsesc — setează secretele MDSSC_INSTANCE și MDSSC_API_KEY"
+    use_mock "MDSSC credentials missing — set the MDSSC_INSTANCE and MDSSC_API_KEY secrets"
 fi
 
 BASE_URL="${MDSSC_INSTANCE%/}/api/v1"
@@ -86,14 +86,14 @@ for path in "/health" "/version" "/scans?limit=1"; do
         break
     fi
 done
-[[ "$health_ok" == "true" ]] || use_mock "MDSSC inaccesibil — niciun health endpoint nu a răspuns"
+[[ "$health_ok" == "true" ]] || use_mock "MDSSC unreachable — no health endpoint responded"
 echo "[MDSSC] Health OK"
 
 # ── 2. Resolve Workflow ID ────────────────────────────────────────────────────
 WF_ID="${MDSSC_WORKFLOW_ID:-}"
 
 if [[ -z "$WF_ID" ]]; then
-    echo "[MDSSC] MDSSC_WORKFLOW_ID negăsit — auto-detectez din lista de workflows..."
+    echo "[MDSSC] MDSSC_WORKFLOW_ID not found — auto-detecting from the workflow list..."
     http_code=$(curl -sS -w '%{http_code}' -o /tmp/mdssc-workflows.json \
         --max-time 30 \
         -H "${HDR}: ${MDSSC_API_KEY}" \
@@ -109,18 +109,18 @@ if [[ -z "$WF_ID" ]]; then
             const id = first.id||first.Id||first.WorkflowId||first.workflowId||'';
             if (id) process.stdout.write(id);
         " 2>/dev/null || echo "")
-        [[ -n "$WF_ID" ]] && echo "[MDSSC] Workflow auto-detectat: $WF_ID"
+        [[ -n "$WF_ID" ]] && echo "[MDSSC] Auto-detected workflow: $WF_ID"
     fi
 fi
 
-[[ -n "$WF_ID" ]] || use_mock "Nu s-a putut determina workflow ID — setează MDSSC_WORKFLOW_ID în .github/mdssc-params.env sau ca secret GitHub"
+[[ -n "$WF_ID" ]] || use_mock "Could not determine the workflow ID — set MDSSC_WORKFLOW_ID in .github/mdssc-params.env or as a GitHub secret"
 
-# ── 3. Fetch StorageId + RepositoryId din workflow ────────────────────────────
+# ── 3. Fetch StorageId + RepositoryId from the workflow ───────────────────────
 STORAGE_ID="${MDSSC_STORAGE_ID:-}"
 REPO_ID="${MDSSC_REPOSITORY_ID:-}"
 
 if [[ -z "$STORAGE_ID" || -z "$REPO_ID" ]]; then
-    echo "[MDSSC] Fetch metadata workflow ${WF_ID}..."
+    echo "[MDSSC] Fetching workflow metadata ${WF_ID}..."
     http_code=$(curl -sS -w '%{http_code}' -o /tmp/mdssc-wf.json \
         --max-time 30 \
         -H "${HDR}: ${MDSSC_API_KEY}" \
@@ -146,18 +146,18 @@ if [[ -z "$STORAGE_ID" || -z "$REPO_ID" ]]; then
 fi
 
 echo "[MDSSC] WorkflowId   : $WF_ID"
-echo "[MDSSC] StorageId    : ${STORAGE_ID:-'(negăsit)'}"
-echo "[MDSSC] RepositoryId : ${REPO_ID:-'(negăsit)'}"
+echo "[MDSSC] StorageId    : ${STORAGE_ID:-'(not found)'}"
+echo "[MDSSC] RepositoryId : ${REPO_ID:-'(not found)'}"
 
 if [[ -z "$STORAGE_ID" || -z "$REPO_ID" ]]; then
-    use_mock "Nu s-au putut determina StorageId/RepositoryId — verifică conexiunea GitHub din MDSSC sau setează MDSSC_STORAGE_ID/MDSSC_REPOSITORY_ID ca secrete GitHub"
+    use_mock "Could not determine StorageId/RepositoryId — check the GitHub connection in MDSSC or set MDSSC_STORAGE_ID/MDSSC_REPOSITORY_ID as GitHub secrets"
 fi
 
 # ── 4. POST indirect scan ─────────────────────────────────────────────────────
-# Identic cu Jenkins: POST /api/v1/scans cu body JSON
-# MDSSC se conectează la GitHub și scanează branch-ul direct din repo
+# Identical to Jenkins: POST /api/v1/scans with a JSON body
+# MDSSC connects to GitHub and scans the branch directly from the repo
 echo "=========================================="
-echo "[MDSSC] Pornire indirect scan..."
+echo "[MDSSC] Starting indirect scan..."
 echo "[MDSSC] Branch: $BRANCH | Workflow: $WF_ID"
 echo "=========================================="
 
@@ -176,7 +176,7 @@ cat /tmp/mdssc-submit.json 2>/dev/null || true
 echo ""
 
 if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-    use_mock "POST /scans indirect eșuat HTTP ${http_code} — verifică conexiunea GitHub din MDSSC"
+    use_mock "POST /scans indirect failed HTTP ${http_code} — check the GitHub connection in MDSSC"
 fi
 
 SCAN_ID=$(node -e "
@@ -186,11 +186,11 @@ SCAN_ID=$(node -e "
     if (id) process.stdout.write(String(id));
 " 2>/dev/null || echo "")
 
-[[ -n "$SCAN_ID" ]] || use_mock "Niciun scan ID returnat de MDSSC — răspuns neașteptat"
+[[ -n "$SCAN_ID" ]] || use_mock "No scan ID returned by MDSSC — unexpected response"
 echo "[MDSSC] Scan ID: $SCAN_ID"
 echo "scan-id=$SCAN_ID" >> "$GH_OUTPUT"
 
-# ── 5. Poll până la finalizare ────────────────────────────────────────────────
+# ── 5. Poll until completion ──────────────────────────────────────────────────
 echo "[MDSSC] Polling /scans/${SCAN_ID}/overview ..."
 elapsed=0
 FINAL_STATE="Unknown"
@@ -201,7 +201,7 @@ while [[ "$elapsed" -le "${MDSSC_SCAN_TIMEOUT:-900}" ]]; do
         -H "${HDR}: ${MDSSC_API_KEY}" \
         "${BASE_URL}/scans/${SCAN_ID}/overview") || http_code=0
 
-    # Fallback la /scans/{id} dacă /overview nu există
+    # Fall back to /scans/{id} if /overview does not exist
     if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
         http_code=$(curl -sS -w '%{http_code}' -o /tmp/mdssc-overview.json \
             --max-time 30 \
@@ -209,14 +209,14 @@ while [[ "$elapsed" -le "${MDSSC_SCAN_TIMEOUT:-900}" ]]; do
             "${BASE_URL}/scans/${SCAN_ID}") || http_code=0
     fi
 
-    # Debug: afișează răspunsul brut la primul poll pentru a vedea structura
+    # Debug: print the raw response on the first poll to see the structure
     if [[ "$elapsed" -eq 0 ]]; then
         echo "[MDSSC] DEBUG overview response:"
         cat /tmp/mdssc-overview.json 2>/dev/null || true
         echo ""
     fi
 
-    # Afișează status curent (identic cu Jenkins _overviewParserScript)
+    # Print the current status (identical to Jenkins _overviewParserScript)
     node -e "
         const d = JSON.parse(require('fs').readFileSync('/tmp/mdssc-overview.json','utf8'));
         const state =
@@ -248,11 +248,11 @@ while [[ "$elapsed" -le "${MDSSC_SCAN_TIMEOUT:-900}" ]]; do
     NORMALIZED=$(echo "$FINAL_STATE" | tr '[:upper:]' '[:lower:]')
 
     if [[ "$NORMALIZED" =~ ^(completed|complete|finished|done|success)$ ]]; then
-        echo "[MDSSC] Scan finalizat: $FINAL_STATE"
+        echo "[MDSSC] Scan completed: $FINAL_STATE"
         break
     fi
     if [[ "$NORMALIZED" =~ ^(failed|failure|error|cancelled|canceled)$ ]]; then
-        echo "::error::[MDSSC] Scan eșuat cu starea: $FINAL_STATE"
+        echo "::error::[MDSSC] Scan failed with state: $FINAL_STATE"
         exit 1
     fi
 
@@ -261,18 +261,18 @@ while [[ "$elapsed" -le "${MDSSC_SCAN_TIMEOUT:-900}" ]]; do
 done
 
 if [[ "$elapsed" -gt "${MDSSC_SCAN_TIMEOUT:-900}" ]]; then
-    echo "::error::[MDSSC] Scan a expirat după ${MDSSC_SCAN_TIMEOUT:-900}s"
+    echo "::error::[MDSSC] Scan timed out after ${MDSSC_SCAN_TIMEOUT:-900}s"
     exit 1
 fi
 
-# ── 6. Fetch rezultat complet ─────────────────────────────────────────────────
+# ── 6. Fetch full result ──────────────────────────────────────────────────────
 curl -sS \
     -H "${HDR}: ${MDSSC_API_KEY}" \
     "${BASE_URL}/scans/${SCAN_ID}" \
     -o scan-results/source-scan.json 2>/dev/null || true
-echo "[MDSSC] Rezultate salvate → scan-results/source-scan.json"
+echo "[MDSSC] Results saved → scan-results/source-scan.json"
 
-# ── 7. Evaluare verdict ───────────────────────────────────────────────────────
+# ── 7. Evaluate verdict ───────────────────────────────────────────────────────
 node -e "
     const fs = require('fs');
     let data = {}, ov = {};
@@ -327,7 +327,7 @@ node -e "
         console.error('::error::[MDSSC] FAIL: ' + reason);
         process.exit(1);
     }
-    console.log('[MDSSC] Source scan trecut — niciun prag depășit.');
+    console.log('[MDSSC] Source scan passed — no threshold exceeded.');
 "
 
 echo "passed=true" >> "$GH_OUTPUT"

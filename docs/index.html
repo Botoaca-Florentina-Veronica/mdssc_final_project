@@ -418,7 +418,7 @@
           <td>5</td>
           <td><strong>Plugin Integration Test</strong></td>
           <td>Jenkins LTS (Docker)</td>
-          <td>Instalează .hpi → rulează Source + Artifact scan</td>
+          <td>Installs .hpi → runs Source + Artifact scan</td>
           <td><span id="tbl-plugin-test" class="stage-status status-skipped">—</span></td>
         </tr>
         <tr>
@@ -747,7 +747,7 @@
     applyStatus('status-e2e-tests',     'tbl-e2e-tests',     s.e2eTests?.status);
     applyStatus('status-release',       'tbl-release',       s.release?.status);
 
-    // Linkuri MDSSC — source + artifact scan
+    // MDSSC links — source + artifact scan
     const mdsscReportLink = (scanId) => {
       const repoSegment = report.mdsscRepositoryId ? `${report.mdsscRepositoryId}/` : '';
       const url = `${report.mdsscInstance}/reports/${repoSegment}${scanId}`;
@@ -762,13 +762,13 @@
       document.getElementById('mdssc-link-container-artifact').innerHTML = mdsscReportLink(report.artifactScanId);
     }
 
-    // Mărime artefact .hpi
+    // .hpi artifact size
     const buildBytes = s.build?.result?.sizeBytes;
     if (buildBytes) {
       document.getElementById('build-size-note').textContent = `.hpi · ${fmtBytes(buildBytes)}`;
     }
 
-    // Durate pe stage
+    // Per-stage durations
     if (renderTimeline(s)) {
       document.getElementById('timeline-card').style.display = '';
     }
@@ -794,7 +794,7 @@
   }
 
   loadReport();
-  // Auto-refresh la 1 minut — preia raportul nou când rulează un build
+  // Auto-refresh every minute — fetches the new report when a build runs
   setInterval(loadReport, 60000);
 </script>
 

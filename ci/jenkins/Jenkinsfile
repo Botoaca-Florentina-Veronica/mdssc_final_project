@@ -2,18 +2,18 @@
 // MDSSC Pipeline — Jenkinsfile (self-contained)
 //
 // Stages:
-//   1. Checkout      — clone repo + info build
-//   2. Check Health  — verifică conexiunea la serverul MDSSC
-//   3. Security Scan — npm audit + ESLint (doar dacă există package.json)
-//   4. Build         — build proiect (adaptat la stack)
-//   5. Deploy        — deploy (dezactivat implicit)
+//   1. Checkout      — clone repo + build info
+//   2. Check Health  — verify connection to the MDSSC server
+//   3. Security Scan — npm audit + ESLint (only if package.json exists)
+//   4. Build         — build the project (adapted to the stack)
+//   5. Deploy        — deploy (disabled by default)
 //
-// Necesită în Jenkins UI:
-//   - Credențial "mdssc-api-key" (Secret Text) cu MDSSC API key
-//   - Variabila de mediu MDSSC_INSTANCE_URL (Manage Jenkins → System)
+// Required in the Jenkins UI:
+//   - "mdssc-api-key" credential (Secret Text) with the MDSSC API key
+//   - MDSSC_INSTANCE_URL environment variable (Manage Jenkins → System)
 // ============================================================
 
-// ── MDSSC Check Health (inlineat din mdsscAdvanced.groovy) ──────────────────
+// ── MDSSC Check Health (inlined from mdsscAdvanced.groovy) ──────────────────
 
 String mdssc_apiBaseUrl(String server) {
     String s = server.replaceAll('/+$', '')
@@ -70,13 +70,13 @@ pipeline {
     parameters {
         choice(name: 'STACK',
                choices: ['node', 'python', 'java', 'go', 'custom'],
-               description: 'Stack-ul proiectului.')
+               description: 'The project stack.')
         string(name: 'BUILD_COMMAND',
                defaultValue: '',
-               description: 'Comandă de build custom. Gol = default per stack.')
+               description: 'Custom build command. Empty = default per stack.')
         booleanParam(name: 'RUN_DEPLOY',
                      defaultValue: false,
-                     description: 'Activează stage-ul Deploy.')
+                     description: 'Enable the Deploy stage.')
         string(name: 'DEPLOY_METHOD',
                defaultValue: 'none',
                description: 'pm2 | docker | systemd | none')
@@ -117,7 +117,7 @@ pipeline {
                 script {
                     def server = env.MDSSC_INSTANCE_URL?.trim()
                     if (!server) {
-                        echo "MDSSC_INSTANCE_URL nu e setat — sărit Check Health."
+                        echo "MDSSC_INSTANCE_URL is not set — skipping Check Health."
                     } else {
                         mdssc_checkHealth(server)
                     }
@@ -160,7 +160,7 @@ pipeline {
                         sh cmd ?: 'go build ./...'
                     } else {
                         if (cmd) sh cmd
-                        else echo "Stack '${params.STACK}': nicio comandă de build definită."
+                        else echo "Stack '${params.STACK}': no build command defined."
                     }
                 }
             }
@@ -183,7 +183,7 @@ pipeline {
                     } else if (params.DEPLOY_METHOD == 'systemd') {
                         sh 'systemctl restart app'
                     } else {
-                        echo "DEPLOY_METHOD necunoscut: ${params.DEPLOY_METHOD}"
+                        echo "Unknown DEPLOY_METHOD: ${params.DEPLOY_METHOD}"
                     }
                 }
             }
@@ -191,8 +191,8 @@ pipeline {
     }
 
     post {
-        success { echo "Pipeline completat cu succes." }
-        failure { echo "Pipeline eșuat — verifică console log." }
+        success { echo "Pipeline completed successfully." }
+        failure { echo "Pipeline failed — check the console log." }
         always  { sh 'rm -f .mdssc-* 2>/dev/null || true' }
     }
 }

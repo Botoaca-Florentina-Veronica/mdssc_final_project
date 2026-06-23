@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 #
-# mdssc-artifact-scan.sh — scanează artefactul construit (plugin/) cu MDSSC.
-# Bazat pe scan-artifacts.sh original.
+# mdssc-artifact-scan.sh — scans the built artifact (plugin/) with MDSSC.
+# Based on the original scan-artifacts.sh.
 #
-# Flux (identic cu scan-artifacts.sh):
-#   require_env → health → arhivare plugin/ →
-#   scan_direct (arhivă) → poll → detalii → export_reports → evaluate
+# Flow (identical to scan-artifacts.sh):
+#   require_env → health → archive plugin/ →
+#   scan_direct (archive) → poll → details → export_reports → evaluate
 #
-# Logica MDSSC e în lib.sh.
+# The MDSSC logic lives in lib.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ci/scripts/lib.sh
 source "${SCRIPT_DIR}/lib.sh"
 
-# BUILD_NUMBER → GITHUB_RUN_NUMBER în GitHub Actions
+# BUILD_NUMBER → GITHUB_RUN_NUMBER in GitHub Actions
 BUILD_NUMBER="${BUILD_NUMBER:-${GITHUB_RUN_NUMBER:-0}}"
 ARTIFACT_DIR="${MDSSC_ARTIFACT_DIR:-plugin}"
 ARCHIVE="mdssc-artifact-scan-${BUILD_NUMBER}.tar.gz"
@@ -22,9 +22,9 @@ ARCHIVE="mdssc-artifact-scan-${BUILD_NUMBER}.tar.gz"
 cleanup() { rm -f "$ARCHIVE"; }
 trap cleanup EXIT
 
-# ── Fallback mock ─────────────────────────────────────────────────────────────
+# ── Mock fallback ─────────────────────────────────────────────────────────────
 use_mock() {
-    echo "::warning::${1} — fallback la rezultat mock (pipeline continuă)"
+    echo "::warning::${1} — falling back to mock result (pipeline continues)"
     cat > scan-results/artifact-scan.json <<'EOF'
 {
   "id": "mock-art-fallback",
@@ -40,41 +40,41 @@ EOF
     exit 0
 }
 
-# ── 0. Validare env ───────────────────────────────────────────────────────────
-mdssc_require_env || use_mock "MDSSC credentials lipsesc"
+# ── 0. Validate env ───────────────────────────────────────────────────────────
+mdssc_require_env || use_mock "MDSSC credentials missing"
 
 if [[ ! -d "$ARTIFACT_DIR" ]]; then
-    echo "[MDSSC] ERROR: directorul '$ARTIFACT_DIR' nu există — a rulat stage-ul de build?"
+    echo "[MDSSC] ERROR: directory '$ARTIFACT_DIR' does not exist — did the build stage run?"
     exit 1
 fi
 
 # ── 1. Health check ───────────────────────────────────────────────────────────
-mdssc_health || use_mock "MDSSC inaccesibil"
+mdssc_health || use_mock "MDSSC unreachable"
 
-# ── 2. Resolve workflow (preia MDSSC_WF_ID pentru scan direct) ────────────────
+# ── 2. Resolve workflow (fetch MDSSC_WF_ID for the direct scan) ───────────────
 mdssc_resolve_workflow
 
-# ── 3. Arhivare artefact ──────────────────────────────────────────────────────
-echo "[MDSSC] Creare arhivă artefact din '${ARTIFACT_DIR}'..."
+# ── 3. Archive the artifact ───────────────────────────────────────────────────
+echo "[MDSSC] Creating artifact archive from '${ARTIFACT_DIR}'..."
 tar czf "$ARCHIVE" "$ARTIFACT_DIR"
-echo "[MDSSC] Dimensiune arhivă: $(du -sh "$ARCHIVE" | cut -f1)"
-echo "[MDSSC] Conținut:"
+echo "[MDSSC] Archive size: $(du -sh "$ARCHIVE" | cut -f1)"
+echo "[MDSSC] Contents:"
 tar tzf "$ARCHIVE" | sed 's/^/  /'
 
-# ── 4. Scan direct ────────────────────────────────────────────────────────────
-SCAN_ID=$(mdssc_scan_direct "$ARCHIVE") || use_mock "Upload MDSSC eșuat — răspuns invalid sau endpoint indisponibil"
+# ── 4. Direct scan ────────────────────────────────────────────────────────────
+SCAN_ID=$(mdssc_scan_direct "$ARCHIVE") || use_mock "MDSSC upload failed — invalid response or endpoint unavailable"
 
 # ── 5. Poll overview ──────────────────────────────────────────────────────────
 mdssc_poll_overview "$SCAN_ID"
 
-# ── 6. Detalii scan ───────────────────────────────────────────────────────────
+# ── 6. Scan details ───────────────────────────────────────────────────────────
 mdssc_scan_details "$SCAN_ID" "scan-results/artifact-scan.json"
 
-# ── 7. Export SBOM + rapoarte ─────────────────────────────────────────────────
+# ── 7. Export SBOM + reports ──────────────────────────────────────────────────
 mdssc_export_reports "$SCAN_ID"
 
 echo "scan-id=$SCAN_ID" >> "$GITHUB_OUTPUT"
 
 # ── 7. Verdict ────────────────────────────────────────────────────────────────
-echo "[MDSSC] Artefact scanat: ${ARTIFACT_DIR}"
+echo "[MDSSC] Artifact scanned: ${ARTIFACT_DIR}"
 mdssc_evaluate "Artifact Scan"

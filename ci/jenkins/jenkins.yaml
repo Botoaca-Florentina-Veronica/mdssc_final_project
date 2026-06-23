@@ -1,6 +1,6 @@
 # JCasC — Jenkins Configuration as Code
-# Aplicat automat la startup via CASC_JENKINS_CONFIG env var.
-# ${MDSSC_INSTANCE} și ${MDSSC_API_KEY} vin din variabilele de mediu ale containerului.
+# Applied automatically at startup via the CASC_JENKINS_CONFIG env var.
+# ${MDSSC_INSTANCE} and ${MDSSC_API_KEY} come from the container environment variables.
 
 jenkins:
   securityRealm:

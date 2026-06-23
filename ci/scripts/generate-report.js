@@ -67,7 +67,7 @@ if (fs.existsSync(e2eDir)) {
   }
 }
 
-// Mărimea artefactului .hpi (descărcat de jobul report în artifacts/)
+// Size of the .hpi artifact (downloaded by the report job into artifacts/)
 function fileSize(p) {
   try { return fs.statSync(p).size; } catch { return null; }
 }
@@ -76,9 +76,9 @@ if (hpiBytes != null) {
   stages.build.result = { ...(stages.build.result || {}), sizeBytes: hpiBytes };
 }
 
-// Normalizează rezultatul MDSSC într-o formă constantă pentru frontend.
-// Răspunsul real ține vulnerabilitățile în ScanInformation.VulnerabilityIssues
-// (sau VulnerabilityIssues), iar mock-ul în summary — le unificăm aici.
+// Normalize the MDSSC result into a consistent shape for the frontend.
+// The real response keeps vulnerabilities in ScanInformation.VulnerabilityIssues
+// (or VulnerabilityIssues), and the mock keeps them in summary — we unify them here.
 function normalizeScan(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const c = (raw.ScanInformation && raw.ScanInformation.VulnerabilityIssues)
@@ -107,14 +107,14 @@ function normalizeScan(raw) {
 stages.sourceCodeScan.result = normalizeScan(stages.sourceCodeScan.result);
 stages.artifactScan.result   = normalizeScan(stages.artifactScan.result);
 
-// Durata fiecărui stage — din GitHub Actions jobs API (jobul report rulează ultimul)
+// Duration of each stage — from the GitHub Actions jobs API (the report job runs last)
 async function attachDurations() {
   const token = process.env.GITHUB_TOKEN;
   const runId = process.env.RUN_ID;
   const repo  = process.env.REPO;
   if (!token || !runId || !repo) return;
 
-  // Numărul din numele jobului ("1 · Source Code Scan") → cheia stage-ului
+  // The number in the job name ("1 · Source Code Scan") → the stage key
   const byNum = {
     1: 'sourceCodeScan', 2: 'securityScan', 3: 'build',
     4: 'artifactScan', 5: 'pluginTest', 6: 'e2eTests',
@@ -151,7 +151,7 @@ async function main() {
     ['success', 'skipped'].includes(s.status)
   ) ? 'success' : 'failure';
 
-  // Extrage scan ID-urile din rezultatele MDSSC (câmpul ScanId sau id)
+  // Extract the scan IDs from the MDSSC results (the ScanId or id field)
   const sourceScanId   = stages.sourceCodeScan.result?.ScanId || stages.sourceCodeScan.result?.id || null;
   const artifactScanId = stages.artifactScan.result?.ScanId   || stages.artifactScan.result?.id   || null;
   const mdsscInstance     = (process.env.MDSSC_INSTANCE || '').replace(/\/$/, '');
@@ -186,8 +186,8 @@ async function main() {
   console.log(`Commit: ${report.commit.slice(0, 8)}  Branch: ${report.branch}`);
   console.log(`Report: ${path.join(OUT_DIR, 'pipeline-report.json')}\n`);
 
-  // Raportul se generează mereu cu succes — statusul e în JSON, nu în exit code
-  console.log(`\nGitHub Pages report generat.`);
+  // The report is always generated successfully — the status is in the JSON, not the exit code
+  console.log(`\nGitHub Pages report generated.`);
 }
 
 main();

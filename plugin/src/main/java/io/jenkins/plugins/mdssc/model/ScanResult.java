@@ -99,14 +99,14 @@ public class ScanResult {
         return blockedLicenses;
     }
 
-    // Identic cu Jenkins mdsscAdvanced.groovy — caută și în obiectul nested scanStatus
+    // Identical to Jenkins mdsscAdvanced.groovy — also looks inside the nested scanStatus object
     private static String extractState(JsonNode data) {
-        // 1. Câmpuri top-level
+        // 1. Top-level fields
         for (String k : new String[]{"ScanningState", "scanningState"}) {
             if (data != null && data.has(k) && data.get(k).isTextual())
                 return data.get(k).asText();
         }
-        // 2. Obiect nested: scanStatus.scanningState / ScanStatus.ScanningState
+        // 2. Nested object: scanStatus.scanningState / ScanStatus.ScanningState
         for (String outer : new String[]{"scanStatus", "ScanStatus"}) {
             JsonNode ss = data != null ? data.path(outer) : null;
             if (ss != null && !ss.isMissingNode() && ss.isObject()) {
@@ -116,7 +116,7 @@ public class ScanResult {
                 }
             }
         }
-        // 3. Fallback generic
+        // 3. Generic fallback
         for (String k : new String[]{"status", "Status", "state", "State"}) {
             if (data != null && data.has(k) && data.get(k).isTextual())
                 return data.get(k).asText();
