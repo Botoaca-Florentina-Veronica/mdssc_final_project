@@ -258,7 +258,7 @@ jobs:
           MDSSC_API_KEY:              ${{ secrets.MDSSC_API_KEY }}
           MDSSC_API_KEY_HEADER:       ${{ env.MDSSC_API_KEY_HEADER }}
           MDSSC_WORKFLOW_ID:          ${{ inputs.workflow_id || secrets.MDSSC_WORKFLOW_ID }}
-          ARTIFACT_DIR:               plugin
+          MDSSC_ARTIFACT_DIR:         plugin
           VULNERABILITY_THRESHOLD:    ${{ env.VULNERABILITY_THRESHOLD }}
           FAIL_ON_SECRET:             ${{ env.FAIL_ON_SECRET }}
           FAIL_ON_MALWARE:            ${{ env.FAIL_ON_MALWARE }}
@@ -325,23 +325,18 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Stage 6 — E2E Tests
-  # Playwright + MDSSC mock server.
-  # Runs in parallel with the Plugin Integration Test.
+  # Runs ci/scripts/mdssc-source-scan.sh and mdssc-artifact-scan.sh (the same
+  # scripts used by Stages 1 and 4) against a scripted mock MDSSC server, so it
+  # needs no real credentials and doesn't depend on the plugin build.
   # ─────────────────────────────────────────────────────────────────────────────
   e2e-tests:
     name: "6 · E2E Tests"
-    needs: [build, artifact-scan]
     # Does not run on the scheduled daily scan (only push/PR/manual).
     if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download .hpi
-        uses: actions/download-artifact@v4
-        with:
-          name: mdssc-plugin-hpi
-          path: plugin/
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -352,18 +347,9 @@ jobs:
         run: npm install
         working-directory: e2e
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-        working-directory: e2e
-
       - name: Run E2E tests
-        # E2E not implemented yet — do not fail the pipeline if missing/failing
-        continue-on-error: true
         env:
-          MDSSC_INSTANCE: ${{ secrets.MDSSC_INSTANCE }}
-          MDSSC_API_KEY:  ${{ secrets.MDSSC_API_KEY }}
-          HPI_PATH:       ${{ github.workspace }}/plugin/mdssc-plugin.hpi
-          CI:             "true"
+          CI: "true"
         run: npx playwright test
         working-directory: e2e
 

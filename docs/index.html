@@ -219,6 +219,8 @@
       color: var(--yellow);
       margin-bottom: 16px;
     }
+    .pending-notice.notice-ok    { background: rgba(63,185,80,.08);  border-color: rgba(63,185,80,.25);  color: var(--green); }
+    .pending-notice.notice-error { background: rgba(248,81,73,.08);  border-color: rgba(248,81,73,.25);  color: var(--red); }
 
     footer {
       border-top: 1px solid var(--border);
@@ -468,56 +470,56 @@
       E2E Test Coverage
     </h2>
 
-    <div class="pending-notice">
-      ⚠️ E2E tests are not yet implemented — Playwright test files are pending (Track C). The scenarios below represent the planned test coverage.
+    <div class="pending-notice" id="e2e-notice">
+      ℹ️ No pipeline report yet — the dots below turn green/red once the "6 · E2E Tests" stage has run at least once.
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px" id="e2e-coverage-grid">
 
       <div class="test-group">
         <h4>Vulnerability Threshold (Source &amp; Artifact)</h4>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on critical threshold</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on high threshold</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on medium threshold</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on low threshold</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Fails on unknown severity</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Passes when threshold = none</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="critical vuln at critical threshold|critical threshold exceeded"></span>Fails on critical threshold</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="high vuln at high threshold|high threshold exceeded"></span>Fails on high threshold</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="medium vuln at medium threshold|medium threshold exceeded"></span>Fails on medium threshold</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="low vuln at low threshold|low threshold exceeded"></span>Fails on low threshold</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="unknown-severity vuln at unknown threshold|unknown threshold exceeded"></span>Fails on unknown severity</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="threshold none ignores any vulnerability count"></span>Passes when threshold = none</div>
       </div>
 
       <div class="test-group">
         <h4>Secrets &amp; Malware Detection</h4>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Fails when secrets found + failOnSecret=true</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Passes when secrets found + failOnSecret=false</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Fails when malware found + failOnMalware=true</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Passes when malware found + failOnMalware=false</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="secret detected and failonsecret enabled"></span>Fails when secrets found + failOnSecret=true</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="secret detected but failonsecret disabled"></span>Passes when secrets found + failOnSecret=false</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="malware detected and failonmalware enabled"></span>Fails when malware found + failOnMalware=true</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="malware detected but failonmalware disabled"></span>Passes when malware found + failOnMalware=false</div>
       </div>
 
       <div class="test-group">
         <h4>Bad Input / Error Handling</h4>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Invalid API key → 401</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Unreachable MDSSC URL throws</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Invalid connection ID → 400</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Workflow not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="invalid api key"></span>Invalid API key → 401</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="unreachable mdssc url"></span>Unreachable MDSSC URL throws</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="invalid connection id"></span>Invalid connection ID → 400</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="workflow id not found"></span>Workflow not found → 404</div>
       </div>
 
       <div class="test-group">
         <h4>Source Code Scan Step</h4>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Repository not found → 404</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Branch not found → 404</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Invalid connection ID → 400</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Workflow not found → 404</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Default workflow when ID omitted</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Full clean scan flow passes</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="repository not found on the workflow"></span>Repository not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="branch not found"></span>Branch not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="invalid connection id"></span>Invalid connection ID → 400</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="workflow id not found"></span>Workflow not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="default workflow auto-detected when workflow id is omitted"></span>Default workflow when ID omitted</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="full clean scan flow passes"></span>Full clean scan flow passes</div>
       </div>
 
       <div class="test-group">
         <h4>Artifact Scan Step</h4>
-        <div class="test-item"><span class="test-dot dot-pending"></span>File not found → 400</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>File too large → 413</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Unsupported file type → 415</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Workflow not found → 404</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Default workflow when ID omitted</div>
-        <div class="test-item"><span class="test-dot dot-pending"></span>Full clean scan flow passes</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="file (artifact directory) not found"></span>File not found → 400</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="exceeds mdssc_max_upload_mb"></span>File too large → 413</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="unsupported file type"></span>Unsupported file type → 415</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="workflow id not found"></span>Workflow not found → 404</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="default workflow auto-detected when workflow id is omitted"></span>Default workflow when ID omitted</div>
+        <div class="test-item"><span class="test-dot dot-pending" data-match="full clean scan flow passes"></span>Full clean scan flow passes</div>
       </div>
 
     </div>
@@ -711,6 +713,81 @@
       </div>`;
   }
 
+  // Flattens a Playwright JSON-reporter report (one entry per e2e/test-results/*.json
+  // file) into a flat list of { title, passed }. Each spec's final status is taken
+  // from its last attempt (covers retries).
+  function flattenE2ESpecs(reportFiles) {
+    const out = [];
+    function walkSuite(suite) {
+      for (const spec of suite.specs || []) {
+        for (const t of spec.tests || []) {
+          const results = t.results || [];
+          const last = results[results.length - 1];
+          out.push({ title: spec.title || '', passed: last ? last.status === 'passed' : false });
+        }
+      }
+      for (const sub of suite.suites || []) walkSuite(sub);
+    }
+    for (const file of reportFiles || []) {
+      for (const suite of file.suites || []) walkSuite(suite);
+    }
+    return out;
+  }
+
+  // Colors each .test-dot[data-match] in the E2E coverage card based on whether
+  // any spec whose title contains one of its (pipe-separated) phrases ran, and
+  // whether all matching specs passed.
+  function renderE2ECoverage(e2eStage) {
+    const notice = document.getElementById('e2e-notice');
+    const dots = Array.from(document.querySelectorAll('#e2e-coverage-grid .test-dot[data-match]'));
+
+    if (!e2eStage || !e2eStage.status || e2eStage.status === 'skipped') {
+      notice.className = 'pending-notice';
+      notice.textContent = 'ℹ️ No pipeline report yet — the dots below turn green/red once the "6 · E2E Tests" stage has run at least once.';
+      return;
+    }
+
+    const specs = flattenE2ESpecs(e2eStage.result);
+    let matchedCount = 0, failedCount = 0;
+
+    for (const dot of dots) {
+      const phrases = dot.dataset.match.toLowerCase().split('|');
+      const matches = specs.filter(s => {
+        const title = s.title.toLowerCase();
+        return phrases.some(p => title.includes(p));
+      });
+      dot.classList.remove('dot-pending', 'dot-pass', 'dot-fail');
+      if (matches.length === 0) {
+        dot.classList.add('dot-pending');
+      } else if (matches.every(m => m.passed)) {
+        dot.classList.add('dot-pass');
+        matchedCount++;
+      } else {
+        dot.classList.add('dot-fail');
+        matchedCount++;
+        failedCount++;
+      }
+    }
+
+    if (specs.length === 0) {
+      // The stage ran but no JSON results were attached (e.g. report job ran
+      // without downloading e2e-test-results) — fall back to the job's own result.
+      notice.className = e2eStage.status === 'success' ? 'pending-notice notice-ok' : 'pending-notice notice-error';
+      notice.textContent = e2eStage.status === 'success'
+        ? '✅ E2E Tests stage passed (detailed per-scenario results were not attached to this report).'
+        : '❌ E2E Tests stage failed — see the Playwright report artifact on the Actions run for details.';
+      return;
+    }
+
+    if (failedCount > 0) {
+      notice.className = 'pending-notice notice-error';
+      notice.textContent = `❌ ${failedCount} scenario${failedCount === 1 ? '' : 's'} failing out of ${matchedCount} covered — see the highlighted items below.`;
+    } else {
+      notice.className = 'pending-notice notice-ok';
+      notice.textContent = `✅ All ${matchedCount} covered scenarios passing (${specs.length} total E2E tests ran).`;
+    }
+  }
+
   async function loadReport() {
     let report = null;
     try {
@@ -746,6 +823,8 @@
     applyStatus('status-plugin-test',   'tbl-plugin-test',   s.pluginTest?.status);
     applyStatus('status-e2e-tests',     'tbl-e2e-tests',     s.e2eTests?.status);
     applyStatus('status-release',       'tbl-release',       s.release?.status);
+
+    renderE2ECoverage(s.e2eTests);
 
     // MDSSC links — source + artifact scan
     const mdsscReportLink = (scanId) => {

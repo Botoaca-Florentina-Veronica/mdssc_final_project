@@ -61,6 +61,29 @@ echo "[MDSSC] Archive size: $(du -sh "$ARCHIVE" | cut -f1)"
 echo "[MDSSC] Contents:"
 tar tzf "$ARCHIVE" | sed 's/^/  /'
 
+# ── 3b. Enforce the max upload size ───────────────────────────────────────────
+ARCHIVE_SIZE_MB=$(( $(wc -c < "$ARCHIVE") / 1024 / 1024 ))
+if [[ "$ARCHIVE_SIZE_MB" -gt "$MDSSC_MAX_UPLOAD_MB" ]]; then
+    if [[ "$MDSSC_SKIP_LARGE_ARTIFACTS" == "true" ]]; then
+        echo "::warning::Artifact archive is ${ARCHIVE_SIZE_MB}MB, exceeding the ${MDSSC_MAX_UPLOAD_MB}MB limit — skipping upload (MDSSC_SKIP_LARGE_ARTIFACTS=true)"
+        cat > scan-results/artifact-scan.json <<EOF
+{
+  "id": "skipped-too-large",
+  "status": "SKIPPED",
+  "skipped": true,
+  "sizeMb": ${ARCHIVE_SIZE_MB},
+  "limitMb": ${MDSSC_MAX_UPLOAD_MB}
+}
+EOF
+        echo "passed=true"                  >> "$GITHUB_OUTPUT"
+        echo "scan-id=skipped-too-large"     >> "$GITHUB_OUTPUT"
+        exit 0
+    fi
+    echo "::error::Artifact archive is ${ARCHIVE_SIZE_MB}MB, exceeding the ${MDSSC_MAX_UPLOAD_MB}MB limit (MDSSC_SKIP_LARGE_ARTIFACTS=false)"
+    echo "passed=false" >> "$GITHUB_OUTPUT"
+    exit 1
+fi
+
 # ── 4. Direct scan ────────────────────────────────────────────────────────────
 SCAN_ID=$(mdssc_scan_direct "$ARCHIVE") || use_mock "MDSSC upload failed — invalid response or endpoint unavailable"
 

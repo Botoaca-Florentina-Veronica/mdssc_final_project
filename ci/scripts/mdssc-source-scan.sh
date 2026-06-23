@@ -279,14 +279,23 @@ node -e "
     try { data = JSON.parse(fs.readFileSync('scan-results/source-scan.json','utf8')); } catch(e) {}
     try { ov   = JSON.parse(fs.readFileSync('/tmp/mdssc-overview.json','utf8')); }     catch(e) {}
 
-    const iss      = data.vulnerabilityIssues||data.VulnerabilityIssues||{};
+    // MDSSC nests the real findings under ScanInformation (see plugin.md) —
+    // check that shape first, then fall back to a flat layout for safety.
+    const scanInfo = data.ScanInformation||data.scanInformation||ov.ScanInformation||ov.scanInformation||{};
+    const iss      = scanInfo.VulnerabilityIssues||scanInfo.vulnerabilityIssues||
+                      data.vulnerabilityIssues||data.VulnerabilityIssues||
+                      ov.vulnerabilityIssues||ov.VulnerabilityIssues||{};
     const critical = +(iss.critical||iss.Critical||ov.critical||ov.Critical||0);
     const high     = +(iss.high    ||iss.High    ||ov.high    ||ov.High    ||0);
     const medium   = +(iss.medium  ||iss.Medium  ||ov.medium  ||ov.Medium  ||0);
     const low      = +(iss.low     ||iss.Low     ||ov.low     ||ov.Low     ||0);
-    const malware  = +(ov.Malware||ov.malware||data.malware||0);
-    const secrets  = +(ov.Secret||ov.secret||ov.Secrets||ov.secrets||data.secrets||0);
-    const blocked  = +(ov.BlockedLicensesCount||ov.blockedLicensesCount||0);
+    const unknown  = +(iss.unknown ||iss.Unknown ||ov.unknown ||ov.Unknown ||0);
+    const malwareBool = scanInfo.Malware!==undefined ? scanInfo.Malware : scanInfo.malware;
+    const secretBool   = scanInfo.Secret!==undefined  ? scanInfo.Secret  : scanInfo.secret;
+    const malware  = malwareBool!==undefined ? (malwareBool?1:0) : +(ov.Malware||ov.malware||data.malware||0);
+    const secrets  = secretBool!==undefined  ? (secretBool?1:0)  : +(ov.Secret||ov.secret||ov.Secrets||ov.secrets||data.secrets||0);
+    const licenses = scanInfo.Licenses||scanInfo.licenses||{};
+    const blocked  = +(licenses.BlockedLicensesCount||licenses.blockedLicensesCount||ov.BlockedLicensesCount||ov.blockedLicensesCount||0);
 
     console.log('');
     console.log('==========================================');
@@ -300,6 +309,7 @@ node -e "
     console.log('  High             : ' + high);
     console.log('  Medium           : ' + medium);
     console.log('  Low              : ' + low);
+    console.log('  Unknown          : ' + unknown);
     console.log('------------------------------------------');
     console.log('  OTHER FINDINGS:');
     console.log('  Malware          : ' + malware);
@@ -310,13 +320,13 @@ node -e "
     const threshold    = '${VULNERABILITY_THRESHOLD:-critical}'.toLowerCase();
     const failSecret   = '${FAIL_ON_SECRET:-true}'  === 'true';
     const failMalware  = '${FAIL_ON_MALWARE:-true}' === 'true';
-    const order        = ['low','medium','high','critical'];
+    const order        = ['unknown','low','medium','high','critical'];
     const thIdx        = order.indexOf(threshold);
 
     let failed = false, reason = '';
     if (thIdx >= 0) {
         for (let i = thIdx; i < order.length; i++) {
-            const cnt = {low,medium,high,critical}[order[i]]||0;
+            const cnt = {unknown,low,medium,high,critical}[order[i]]||0;
             if (cnt > 0) { failed = true; reason = order[i] + ' vulnerabilities found'; break; }
         }
     }
